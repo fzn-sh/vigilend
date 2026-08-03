@@ -6,26 +6,34 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IVigilendPool} from "./interfaces/IVigilendPool.sol";
 import {IVigilendOracle} from "./interfaces/IVigilendOracle.sol";
+import {InterestRateModel} from "./interfaces/InterestRateModel.sol";
 
 /// @title VigilendPool
-/// @notice Initial foundational implementation of Vigilend lending pool
+/// @notice Core implementation of Vigilend lending pool with interest accrual
 contract VigilendPool is IVigilendPool, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     struct AssetConfig {
         bool isSupported;
-        uint16 ltv; // 7500 = 75%
-        uint16 liquidationThreshold; // 8000 = 80%
-        uint16 liquidationBonus; // 500 = 5% bonus
+        uint16 ltv; // e.g., 7500 = 75%
+        uint16 liquidationThreshold; // e.g., 8000 = 80%
+        uint16 liquidationBonus; // e.g., 500 = 5% bonus
         uint8 decimals;
     }
 
     IVigilendOracle public immutable oracle;
+    InterestRateModel public interestRateModel;
 
     mapping(address => AssetConfig) public assetConfigs;
     mapping(address => mapping(address => uint256)) public userCollateralShares;
     mapping(address => uint256) public totalCollateralShares;
     mapping(address => uint256) public totalCollateralAmount;
+
+    // --- Debt & Interest Tracking State Variables ---
+    mapping(address => uint256) public borrowIndex; // Scaled by 1e18
+    mapping(address => uint256) public lastUpdateTimestamp;
+    mapping(address => uint256) public totalDebtShares;
+    mapping(address => mapping(address => uint256)) public userDebtShares;
 
     address public owner;
 
@@ -59,6 +67,42 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
             liquidationBonus: liquidationBonus,
             decimals: decimals
         });
+
+        if (borrowIndex[asset] == 0) {
+            borrowIndex[asset] = 1e18;
+            lastUpdateTimestamp[asset] = block.timestamp;
+        }
+    }
+
+    /// @notice Set the interest rate strategy contract
+    function setInterestRateModel(address interestRateModel_) external onlyOwner {
+        if (interestRateModel_ == address(0)) revert ZeroAddress();
+        interestRateModel = InterestRateModel(interestRateModel_);
+    }
+
+    /// @notice Accrue interest for a specific asset based on elapsed time and utilization rate
+    function accrueInterest(address asset) public {
+        uint256 lastTimestamp = lastUpdateTimestamp[asset];
+        if (lastTimestamp == 0 || block.timestamp == lastTimestamp) {
+            return;
+        }
+
+        uint256 timeDelta = block.timestamp - lastTimestamp;
+        lastUpdateTimestamp[asset] = block.timestamp;
+
+        if (address(interestRateModel) == address(0)) return;
+
+        uint256 totalCash = totalCollateralAmount[asset];
+        uint256 totalDebt = (totalDebtShares[asset] * borrowIndex[asset]) / 1e18;
+
+        if (totalDebt == 0) return;
+
+        uint256 borrowRate = interestRateModel.calculateBorrowRate(totalCash, totalDebt);
+        // Linear interest factor: (borrowRate * timeDelta) / 365 days
+        uint256 interestFactor = (borrowRate * timeDelta) / 365 days;
+        uint256 newBorrowIndex = (borrowIndex[asset] * (1e18 + interestFactor)) / 1e18;
+
+        borrowIndex[asset] = newBorrowIndex;
     }
 
     /// @inheritdoc IVigilendPool
@@ -71,6 +115,8 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         if (amount == 0) revert InvalidAmount();
         if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
         if (onBehalfOf == address(0)) revert ZeroAddress();
+
+        accrueInterest(asset);
 
         uint256 totalShares = totalCollateralShares[asset];
         uint256 totalAmount = totalCollateralAmount[asset];
@@ -103,6 +149,8 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         if (amount == 0) revert InvalidAmount();
         if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
         if (to == address(0)) revert ZeroAddress();
+
+        accrueInterest(asset);
 
         uint256 totalShares = totalCollateralShares[asset];
         uint256 totalAmount = totalCollateralAmount[asset];
@@ -152,10 +200,10 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
             uint256 healthFactor
         )
     {
-        // Simple initial stub for deposit-only phase
+        // Initial stub for deposit-only phase
         totalDebtUSD = 0;
         availableBorrowsUSD = 0;
-        healthFactor = type(uint256).max; // Infinite health factor if zero debt
+        healthFactor = type(uint256).max;
         currentLiquidationThreshold = 0;
         ltv = 0;
         totalCollateralUSD = 0;

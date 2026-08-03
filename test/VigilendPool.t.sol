@@ -6,6 +6,7 @@ import {VigilendPool} from "../src/VigilendPool.sol";
 import {MockOracle} from "./mocks/MockOracle.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {IVigilendPool} from "../src/interfaces/IVigilendPool.sol";
+import {InterestRateModel} from "../src/interfaces/InterestRateModel.sol";
 
 contract VigilendPoolTest is Test {
     VigilendPool public pool;
@@ -20,8 +21,10 @@ contract VigilendPoolTest is Test {
         pool = new VigilendPool(address(oracle));
         weth = new MockERC20("Wrapped Ether", "WETH", 18);
 
-        // Set Asset Config
+        // Set Asset Config & Interest Rate Model
         pool.setAssetConfig(address(weth), 7500, 8000, 500, 18);
+        InterestRateModel rateModel = new InterestRateModel();
+        pool.setInterestRateModel(address(rateModel));
         oracle.setPrice(address(weth), 3000 * 1e8); // $3000
 
         // Mint initial WETH to users
@@ -33,6 +36,11 @@ contract VigilendPoolTest is Test {
 
         vm.prank(user2);
         weth.approve(address(pool), type(uint256).max);
+    }
+
+    function test_BorrowIndexInitialization() public view {
+        assertEq(pool.borrowIndex(address(weth)), 1e18);
+        assertTrue(pool.lastUpdateTimestamp(address(weth)) > 0);
     }
 
     function test_DepositSuccess() public {
