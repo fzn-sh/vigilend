@@ -29,7 +29,7 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     mapping(address => uint256) public totalCollateralShares;
     mapping(address => uint256) public totalCollateralAmount;
 
-    // --- Debt & Interest Tracking State Variables ---
+    // Debt & Interest Tracking State Variables
     mapping(address => uint256) public borrowIndex; // Scaled by 1e18
     mapping(address => uint256) public lastUpdateTimestamp;
     mapping(address => uint256) public totalDebtShares;
