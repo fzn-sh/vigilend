@@ -9,7 +9,7 @@ import {IVigilendOracle} from "./interfaces/IVigilendOracle.sol";
 import {InterestRateModel} from "./interfaces/InterestRateModel.sol";
 
 /// @title VigilendPool
-/// @notice Core implementation of Vigilend lending pool with interest accrual
+/// @notice Core implementation of Vigilend lending pool with deposit, withdraw, borrow, repay & interest accrual
 contract VigilendPool is IVigilendPool, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -21,15 +21,24 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         uint8 decimals;
     }
 
+    struct AccountValuation {
+        uint256 totalCollateralUSD;
+        uint256 totalDebtUSD;
+        uint256 weightedLtvSum;
+        uint256 weightedThresholdSum;
+    }
+
     IVigilendOracle public immutable oracle;
     InterestRateModel public interestRateModel;
 
     mapping(address => AssetConfig) public assetConfigs;
+    address[] public supportedAssets;
+
     mapping(address => mapping(address => uint256)) public userCollateralShares;
     mapping(address => uint256) public totalCollateralShares;
     mapping(address => uint256) public totalCollateralAmount;
 
-    // Debt & Interest Tracking State Variables
+    // --- Debt & Interest Tracking State Variables ---
     mapping(address => uint256) public borrowIndex; // Scaled by 1e18
     mapping(address => uint256) public lastUpdateTimestamp;
     mapping(address => uint256) public totalDebtShares;
@@ -59,6 +68,10 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         if (asset == address(0)) revert ZeroAddress();
         require(ltv <= liquidationThreshold, "INVALID_LTV");
         require(liquidationThreshold <= 10000, "INVALID_THRESHOLD");
+
+        if (!assetConfigs[asset].isSupported) {
+            supportedAssets.push(asset);
+        }
 
         assetConfigs[asset] = AssetConfig({
             isSupported: true,
@@ -92,7 +105,7 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
 
         if (address(interestRateModel) == address(0)) return;
 
-        uint256 totalCash = totalCollateralAmount[asset];
+        uint256 totalCash = IERC20(asset).balanceOf(address(this));
         uint256 totalDebt = (totalDebtShares[asset] * borrowIndex[asset]) / 1e18;
 
         if (totalDebt == 0) return;
@@ -106,12 +119,11 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     }
 
     /// @inheritdoc IVigilendPool
-    function deposit(address asset, uint256 amount, address onBehalfOf)
-        external
-        override
-        nonReentrant
-        returns (uint256 shares)
-    {
+    function deposit(
+        address asset,
+        uint256 amount,
+        address onBehalfOf
+    ) external override nonReentrant returns (uint256 shares) {
         if (amount == 0) revert InvalidAmount();
         if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
         if (onBehalfOf == address(0)) revert ZeroAddress();
@@ -140,12 +152,11 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     }
 
     /// @inheritdoc IVigilendPool
-    function withdraw(address asset, uint256 amount, address to)
-        external
-        override
-        nonReentrant
-        returns (uint256 sharesBurned)
-    {
+    function withdraw(
+        address asset,
+        uint256 amount,
+        address to
+    ) external override nonReentrant returns (uint256 sharesBurned) {
         if (amount == 0) revert InvalidAmount();
         if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
         if (to == address(0)) revert ZeroAddress();
@@ -166,19 +177,74 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         totalCollateralShares[asset] -= sharesBurned;
         totalCollateralAmount[asset] -= amount;
 
+        // Check health factor post withdrawal to prevent withdrawing collateral while borrowing
+        (,,,,, uint256 healthFactor) = getUserAccountData(msg.sender);
+        if (healthFactor < 1e18) revert HealthFactorTooLow();
+
         IERC20(asset).safeTransfer(to, amount);
 
         emit Withdraw(asset, msg.sender, to, amount, sharesBurned);
     }
 
     /// @inheritdoc IVigilendPool
-    function borrow(address, uint256, address) external pure override {
-        revert("NOT_IMPLEMENTED_YET");
+    function borrow(
+        address asset,
+        uint256 amount,
+        address onBehalfOf
+    ) external override nonReentrant {
+        if (amount == 0) revert InvalidAmount();
+        if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
+        if (onBehalfOf == address(0)) revert ZeroAddress();
+
+        accrueInterest(asset);
+
+        require(IERC20(asset).balanceOf(address(this)) >= amount, "INSUFFICIENT_POOL_LIQUIDITY");
+
+        uint256 newShares = (amount * 1e18) / borrowIndex[asset];
+        if (newShares == 0) revert InvalidAmount();
+
+        userDebtShares[asset][onBehalfOf] += newShares;
+        totalDebtShares[asset] += newShares;
+
+        // Check LTV borrow limit and health factor post borrow
+        (uint256 totalCollateralUSD, uint256 totalDebtUSD,, , uint256 ltv, uint256 healthFactor) = getUserAccountData(onBehalfOf);
+        uint256 maxBorrowUSD = (totalCollateralUSD * ltv) / 10000;
+        if (totalDebtUSD > maxBorrowUSD || healthFactor < 1e18) revert InsufficientCollateral();
+
+        IERC20(asset).safeTransfer(msg.sender, amount);
+
+        emit Borrow(asset, msg.sender, onBehalfOf, amount);
     }
 
     /// @inheritdoc IVigilendPool
-    function repay(address, uint256, address) external pure override returns (uint256) {
-        revert("NOT_IMPLEMENTED_YET");
+    function repay(
+        address asset,
+        uint256 amount,
+        address onBehalfOf
+    ) external override nonReentrant returns (uint256 repaidAmount) {
+        if (amount == 0) revert InvalidAmount();
+        if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
+        if (onBehalfOf == address(0)) revert ZeroAddress();
+
+        accrueInterest(asset);
+
+        uint256 userDebtAmount = (userDebtShares[asset][onBehalfOf] * borrowIndex[asset]) / 1e18;
+        require(userDebtAmount > 0, "NO_DEBT");
+
+        repaidAmount = amount > userDebtAmount ? userDebtAmount : amount;
+
+        // Conservative calculation: round up debt shares to burn
+        uint256 sharesToBurn = (repaidAmount * 1e18 + borrowIndex[asset] - 1) / borrowIndex[asset];
+        if (sharesToBurn > userDebtShares[asset][onBehalfOf]) {
+            sharesToBurn = userDebtShares[asset][onBehalfOf];
+        }
+
+        userDebtShares[asset][onBehalfOf] -= sharesToBurn;
+        totalDebtShares[asset] -= sharesToBurn;
+
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), repaidAmount);
+
+        emit Repay(asset, msg.sender, onBehalfOf, repaidAmount);
     }
 
     /// @inheritdoc IVigilendPool
@@ -188,7 +254,7 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
 
     /// @inheritdoc IVigilendPool
     function getUserAccountData(address user)
-        external
+        public
         view
         override
         returns (
@@ -200,12 +266,56 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
             uint256 healthFactor
         )
     {
-        // Initial stub for deposit-only phase
-        totalDebtUSD = 0;
-        availableBorrowsUSD = 0;
-        healthFactor = type(uint256).max;
-        currentLiquidationThreshold = 0;
-        ltv = 0;
-        totalCollateralUSD = 0;
+        AccountValuation memory valuation;
+
+        for (uint256 i = 0; i < supportedAssets.length; i++) {
+            address asset = supportedAssets[i];
+            AssetConfig memory config = assetConfigs[asset];
+            if (!config.isSupported) continue;
+
+            (uint256 price, uint8 priceDecimals) = oracle.getPrice(asset);
+            require(oracle.isFresh(asset), "STALE_PRICE");
+
+            uint256 priceScale = (10 ** config.decimals) * (10 ** priceDecimals);
+
+            // Collateral USD calculation
+            uint256 uShares = userCollateralShares[asset][user];
+            if (uShares > 0 && totalCollateralShares[asset] > 0) {
+                uint256 cAmount = (uShares * totalCollateralAmount[asset]) / totalCollateralShares[asset];
+                uint256 cUSD = (cAmount * price * 1e18) / priceScale;
+
+                valuation.totalCollateralUSD += cUSD;
+                valuation.weightedLtvSum += cUSD * config.ltv;
+                valuation.weightedThresholdSum += cUSD * config.liquidationThreshold;
+            }
+
+            // Debt USD calculation
+            uint256 dShares = userDebtShares[asset][user];
+            if (dShares > 0) {
+                uint256 dAmount = (dShares * borrowIndex[asset]) / 1e18;
+                uint256 dUSD = (dAmount * price * 1e18) / priceScale;
+
+                valuation.totalDebtUSD += dUSD;
+            }
+        }
+
+        totalCollateralUSD = valuation.totalCollateralUSD;
+        totalDebtUSD = valuation.totalDebtUSD;
+
+        if (totalCollateralUSD > 0) {
+            ltv = valuation.weightedLtvSum / totalCollateralUSD;
+            currentLiquidationThreshold = valuation.weightedThresholdSum / totalCollateralUSD;
+
+            uint256 maxBorrowUSD = (totalCollateralUSD * ltv) / 10000;
+            if (maxBorrowUSD > totalDebtUSD) {
+                availableBorrowsUSD = maxBorrowUSD - totalDebtUSD;
+            }
+        }
+
+        if (totalDebtUSD == 0) {
+            healthFactor = type(uint256).max;
+        } else {
+            healthFactor = (totalCollateralUSD * currentLiquidationThreshold * 1e18) / (10000 * totalDebtUSD);
+        }
     }
 }

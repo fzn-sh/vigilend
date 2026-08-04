@@ -13,8 +13,8 @@ contract VigilendPoolTest is Test {
     MockOracle public oracle;
     MockERC20 public weth;
 
-    address public user1 = address(0x1);
-    address public user2 = address(0x2);
+    address public constant user1 = address(0x1);
+    address public constant user2 = address(0x2);
 
     function setUp() public {
         oracle = new MockOracle();
@@ -123,5 +123,46 @@ contract VigilendPoolTest is Test {
         // check total ether balance user1 and user2
         assertEq(weth.balanceOf(user1), 95 ether);
         assertEq(weth.balanceOf(user2), 100 ether);
+    }
+
+    function test_BorrowSuccess() public {
+        vm.prank(user1);
+        pool.deposit(address(weth), 10 ether, user1);
+
+        vm.prank(user1);
+        pool.borrow(address(weth), 5 ether, user1);
+
+        assertEq(weth.balanceOf(user1), 95 ether); // 100 - 10 deposited + 5 borrowed
+        assertEq(pool.userDebtShares(address(weth), user1), 5 ether);
+
+        (uint256 totalCollateralUSD, uint256 totalDebtUSD, uint256 availableBorrowsUSD,,, uint256 healthFactor) =
+            pool.getUserAccountData(user1);
+
+        assertEq(totalCollateralUSD, 30000 * 1e18); // 10 WETH * $3000
+        assertEq(totalDebtUSD, 15000 * 1e18); // 5 WETH * $3000
+        assertEq(availableBorrowsUSD, 7500 * 1e18); // Max $22500 - $15000 = $7500
+        assertTrue(healthFactor >= 1e18);
+    }
+
+    function test_RepaySuccess() public {
+        vm.startPrank(user1);
+        pool.deposit(address(weth), 10 ether, user1);
+        pool.borrow(address(weth), 5 ether, user1);
+
+        uint256 repaid = pool.repay(address(weth), 2 ether, user1);
+        vm.stopPrank();
+
+        assertEq(repaid, 2 ether);
+        assertEq(pool.userDebtShares(address(weth), user1), 3 ether);
+        assertEq(weth.balanceOf(user1), 93 ether); // 95 - 2 repaid
+    }
+
+    function test_RevertWhen_BorrowTooMuch() public {
+        vm.prank(user1);
+        pool.deposit(address(weth), 10 ether, user1); // Collateral = $30,000, Max Borrow LTV (75%) = $22,500 (7.5 WETH)
+
+        vm.prank(user1);
+        vm.expectRevert(IVigilendPool.InsufficientCollateral.selector);
+        pool.borrow(address(weth), 8 ether, user1); // 8 WETH = $24,000 > $22,500 -> Reverts!
     }
 }
