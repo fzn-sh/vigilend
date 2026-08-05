@@ -161,7 +161,10 @@ async fn main() -> Result<()> {
                                     print_row("Seized Collateral", &seized_str);
 
                                     if !config.simulation_only {
-                                        info!("🚀 BROADCASTING LIVE ON-CHAIN LIQUIDATION TRANSACTION...");
+                                        print_row(
+                                            "On-Chain Status",
+                                            "Broadcasting Tx to EVM Mempool...",
+                                        );
                                         match executor
                                             .execute_liquidation(
                                                 provider.clone(),
@@ -171,8 +174,18 @@ async fn main() -> Result<()> {
                                             .await
                                         {
                                             Ok(receipt) => {
-                                                let tx_hash_str =
+                                                let raw_hash =
                                                     format!("{:?}", receipt.transaction_hash);
+                                                let short_hash = if raw_hash.len() > 24 {
+                                                    format!(
+                                                        "{}...{}",
+                                                        &raw_hash[..10],
+                                                        &raw_hash[raw_hash.len() - 8..]
+                                                    )
+                                                } else {
+                                                    raw_hash
+                                                };
+
                                                 let block_str = format!(
                                                     "{:?}",
                                                     receipt.block_number.unwrap_or_default()
@@ -180,16 +193,16 @@ async fn main() -> Result<()> {
                                                 let live_res =
                                                     format!("CONFIRMED (Block #{})", block_str);
                                                 print_row_colored(
-                                                    "On-Chain Execution",
+                                                    "Execution Result",
                                                     &live_res,
                                                     C_GREEN,
                                                 );
-                                                print_row("Transaction Hash", &tx_hash_str);
+                                                print_row("Transaction Hash", &short_hash);
                                             }
                                             Err(err) => {
                                                 let err_str = format!("FAILED ({:?})", err);
                                                 print_row_colored(
-                                                    "On-Chain Execution",
+                                                    "Execution Result",
                                                     &err_str,
                                                     C_RED,
                                                 );
