@@ -45,6 +45,10 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     mapping(address => uint256) public totalDebtShares;
     mapping(address => mapping(address => uint256)) public userDebtShares;
 
+    // --- Reserve Pool State Variables ---
+    mapping(address => uint16) public reserveFactor; // basis points, e.g. 1000 = 10%
+    mapping(address => uint256) public totalReserveAmount;
+
     address public owner;
 
     modifier onlyOwner() {
@@ -94,6 +98,13 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         interestRateModel = InterestRateModel(interestRateModel_);
     }
 
+    /// @notice Set reserve factor for a specific asset (in basis points)
+    function setReserveFactor(address asset, uint16 factor) external onlyOwner {
+        if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
+        require(factor <= 5000, "INVALID_RESERVE_FACTOR");
+        reserveFactor[asset] = factor;
+    }
+
     /// @notice Accrue interest for a specific asset based on elapsed time and utilization rate
     function accrueInterest(address asset) public {
         uint256 lastTimestamp = lastUpdateTimestamp[asset];
@@ -115,6 +126,13 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         // Linear interest factor: (borrowRate * timeDelta) / 365 days
         uint256 interestFactor = (borrowRate * timeDelta) / 365 days;
         uint256 newBorrowIndex = (borrowIndex[asset] * (1e18 + interestFactor)) / 1e18;
+
+        uint256 totalInterestAccrued = ((newBorrowIndex - borrowIndex[asset]) * totalDebtShares[asset]) / 1e18;
+        uint256 reserveAmount = (totalInterestAccrued * reserveFactor[asset]) / 10000;
+        if (reserveAmount > 0) {
+            totalReserveAmount[asset] += reserveAmount;
+            emit ReserveAccrued(asset, reserveAmount);
+        }
 
         borrowIndex[asset] = newBorrowIndex;
     }
@@ -417,5 +435,67 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         } else {
             healthFactor = (totalCollateralUSD * currentLiquidationThreshold * 1e18) / (10000 * totalDebtUSD);
         }
+    }
+
+    /// @inheritdoc IVigilendPool
+    function socializeBadDebt(address collateralAsset, address debtAsset, address borrower)
+        external
+        override
+        nonReentrant
+        returns (uint256 socializedAmount)
+    {
+        if (borrower == address(0)) revert ZeroAddress();
+        if (!assetConfigs[collateralAsset].isSupported || !assetConfigs[debtAsset].isSupported) {
+            revert AssetNotSupported();
+        }
+
+        accrueInterest(collateralAsset);
+        accrueInterest(debtAsset);
+
+        (,,,,, uint256 healthFactor) = getUserAccountData(borrower);
+        if (healthFactor >= 1e18) revert BorrowerNotUnderwater();
+
+        // Verify collateral for this borrower is zero or exhausted
+        uint256 cShares = userCollateralShares[collateralAsset][borrower];
+        if (cShares > 0) revert InsufficientCollateral();
+
+        uint256 dShares = userDebtShares[debtAsset][borrower];
+        if (dShares == 0) revert NoBadDebt();
+
+        uint256 badDebtAmount = (dShares * borrowIndex[debtAsset]) / 1e18;
+
+        uint256 reserveOffsetAmount =
+            totalReserveAmount[debtAsset] >= badDebtAmount ? badDebtAmount : totalReserveAmount[debtAsset];
+
+        if (reserveOffsetAmount > 0) {
+            totalReserveAmount[debtAsset] -= reserveOffsetAmount;
+        }
+
+        socializedAmount = badDebtAmount - reserveOffsetAmount;
+
+        userDebtShares[debtAsset][borrower] = 0;
+        if (totalDebtShares[debtAsset] >= dShares) {
+            totalDebtShares[debtAsset] -= dShares;
+        } else {
+            totalDebtShares[debtAsset] = 0;
+        }
+
+        emit BadDebtSocialized(
+            collateralAsset, debtAsset, borrower, badDebtAmount, reserveOffsetAmount, socializedAmount
+        );
+    }
+
+    /// @inheritdoc IVigilendPool
+    function withdrawReserve(address asset, uint256 amount, address to) external override onlyOwner nonReentrant {
+        if (amount == 0) revert InvalidAmount();
+        if (to == address(0)) revert ZeroAddress();
+        if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
+
+        if (totalReserveAmount[asset] < amount) revert InsufficientReserve();
+
+        totalReserveAmount[asset] -= amount;
+        IERC20(asset).safeTransfer(to, amount);
+
+        emit ReserveWithdrawn(asset, to, amount);
     }
 }

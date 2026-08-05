@@ -23,6 +23,16 @@ interface IVigilendPool {
     event FlashLoan(
         address indexed target, address indexed initiator, address indexed asset, uint256 amount, uint256 premium
     );
+    event BadDebtSocialized(
+        address indexed collateralAsset,
+        address indexed debtAsset,
+        address indexed borrower,
+        uint256 badDebtAmount,
+        uint256 reserveOffsetAmount,
+        uint256 socializedAmount
+    );
+    event ReserveAccrued(address indexed asset, uint256 reserveAmount);
+    event ReserveWithdrawn(address indexed asset, address indexed to, uint256 amount);
 
     error InvalidAmount();
     error AssetNotSupported();
@@ -32,6 +42,9 @@ interface IVigilendPool {
     error StalePrice();
     error ZeroAddress();
     error FlashLoanFailed();
+    error BorrowerNotUnderwater();
+    error NoBadDebt();
+    error InsufficientReserve();
 
     /// @notice Supply assets into the protocol to earn interest or use as collateral
     /// @param asset Address of the ERC-20 token to deposit
@@ -96,4 +109,19 @@ interface IVigilendPool {
             uint256 ltv,
             uint256 healthFactor
         );
+
+    /// @notice Socialize unbacked bad debt for an underwater position whose collateral is exhausted
+    /// @param collateralAsset Collateral asset address
+    /// @param debtAsset Debt asset address
+    /// @param borrower Borrower address
+    /// @return socializedAmount Amount of bad debt socialized after reserve pool drawdown
+    function socializeBadDebt(address collateralAsset, address debtAsset, address borrower)
+        external
+        returns (uint256 socializedAmount);
+
+    /// @notice Withdraw accumulated protocol reserves
+    /// @param asset Asset address
+    /// @param amount Amount to withdraw
+    /// @param to Destination address
+    function withdrawReserve(address asset, uint256 amount, address to) external;
 }
