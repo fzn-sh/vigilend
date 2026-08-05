@@ -16,21 +16,33 @@ const C_GREEN: &str = "\x1b[32m";
 const C_CYAN: &str = "\x1b[36m";
 
 fn format_units_18(val: U256) -> String {
+    if val >= U256::from(u128::MAX) {
+        return "∞".to_string();
+    }
     let f = val.as_u128() as f64 / 1e18;
     format!("{:.4}", f)
 }
 
 fn format_usd(val: U256) -> String {
+    if val >= U256::from(u128::MAX) {
+        return "$∞".to_string();
+    }
     let f = val.as_u128() as f64 / 1e18;
     format!("${:.2}", f)
 }
 
 fn format_usdc(val: U256) -> String {
+    if val >= U256::from(u128::MAX) {
+        return "∞ USDC".to_string();
+    }
     let f = val.as_u128() as f64 / 1e6;
     format!("{:.2} USDC", f)
 }
 
 fn format_weth(val: U256) -> String {
+    if val >= U256::from(u128::MAX) {
+        return "∞ WETH".to_string();
+    }
     let f = val.as_u128() as f64 / 1e18;
     format!("{:.4} WETH", f)
 }
