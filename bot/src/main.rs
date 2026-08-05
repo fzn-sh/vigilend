@@ -164,6 +164,14 @@ async fn main() -> Result<()> {
                             };
                             print_row("Pair Strategy", strategy_str);
                             print_row("Debt Repay Amount", &cover_str);
+                            if config.use_flash_loan {
+                                let fee =
+                                    (target.debt_to_cover * U256::from(9)) / U256::from(10000);
+                                print_row(
+                                    "Flash Loan Fee",
+                                    &format!("{} (0.09%)", format_usdc(fee)),
+                                );
+                            }
                             print_row("Incentive Bonus", "+5.00% Liquidation Premium");
 
                             match executor
