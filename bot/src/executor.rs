@@ -96,6 +96,8 @@ impl LiquidationExecutor {
         provider: Arc<Provider<Http>>,
         target: &LiquidationTarget,
         private_key: &str,
+        use_flash_loan: bool,
+        flash_receiver: Option<Address>,
     ) -> Result<TransactionReceipt> {
         let wallet: LocalWallet = private_key
             .parse::<LocalWallet>()
@@ -103,7 +105,21 @@ impl LiquidationExecutor {
             .with_chain_id(31337u64);
 
         let client = SignerMiddleware::new(provider, wallet);
-        let calldata = self.encode_liquidate_calldata(target);
+
+        let calldata = if use_flash_loan {
+            let receiver = flash_receiver.ok_or_else(|| {
+                eyre::eyre!("FLASH_RECEIVER_ADDRESS must be configured in .env for flash loan mode")
+            })?;
+            self.encode_flash_loan_calldata(
+                receiver,
+                target.debt_asset,
+                target.debt_to_cover,
+                target.collateral_asset,
+                target.borrower,
+            )
+        } else {
+            self.encode_liquidate_calldata(target)
+        };
 
         let tx = TransactionRequest::new()
             .to(self.pool_address)

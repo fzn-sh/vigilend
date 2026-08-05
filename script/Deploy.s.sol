@@ -6,6 +6,7 @@ import {VigilendPool} from "../src/VigilendPool.sol";
 import {MockOracle} from "../test/mocks/MockOracle.sol";
 import {MockERC20} from "../test/mocks/MockERC20.sol";
 import {InterestRateModel} from "../src/interfaces/InterestRateModel.sol";
+import {FlashLiquidationReceiver} from "../src/FlashLiquidationReceiver.sol";
 
 contract DeployScript is Script {
     function run() external {
@@ -25,6 +26,8 @@ contract DeployScript is Script {
         MockERC20 weth = new MockERC20("Wrapped Ether", "WETH", 18);
         MockERC20 usdc = new MockERC20("USD Coin", "USDC", 6);
 
+        FlashLiquidationReceiver receiver = new FlashLiquidationReceiver(address(pool));
+
         // Configure Markets
         pool.setAssetConfig(address(weth), 7500, 8000, 500, 18);
         pool.setAssetConfig(address(usdc), 8500, 9000, 500, 6);
@@ -41,15 +44,19 @@ contract DeployScript is Script {
         weth.mint(testUser, 100 ether);
         usdc.mint(testUser, 100_000 * 1e6);
 
+        // Fund receiver with fee buffer
+        usdc.mint(address(receiver), 1_000 * 1e6);
+
         vm.stopBroadcast();
 
         console.log("================ DEPLOYMENT SUCCESSFUL ================");
-        console.log("Deployer Address:     ", deployer);
-        console.log("MockOracle Address:   ", address(oracle));
-        console.log("InterestRateModel:    ", address(interestRateModel));
-        console.log("VigilendPool Address: ", address(pool));
-        console.log("WETH Address:         ", address(weth));
-        console.log("USDC Address:         ", address(usdc));
+        console.log("Deployer Address:        ", deployer);
+        console.log("MockOracle Address:      ", address(oracle));
+        console.log("InterestRateModel:       ", address(interestRateModel));
+        console.log("VigilendPool Address:    ", address(pool));
+        console.log("WETH Address:            ", address(weth));
+        console.log("USDC Address:            ", address(usdc));
+        console.log("FlashReceiver Address:   ", address(receiver));
         console.log("=======================================================");
     }
 }

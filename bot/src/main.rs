@@ -69,6 +69,7 @@ async fn main() -> Result<()> {
         weth = ?config.weth_address,
         usdc = ?config.usdc_address,
         liquidator = ?config.bot_address,
+        flash_receiver = ?config.flash_receiver_address,
         use_flash_loan = config.use_flash_loan,
         simulation_only = config.simulation_only,
         min_profit = %format!("${:.2}", config.min_profit_usd as f64),
@@ -176,6 +177,8 @@ async fn main() -> Result<()> {
                                                 provider.clone(),
                                                 &target,
                                                 &private_key,
+                                                config.use_flash_loan,
+                                                config.flash_receiver_address,
                                             )
                                             .await
                                         {
