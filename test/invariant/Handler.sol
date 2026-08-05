@@ -114,6 +114,29 @@ contract Handler is Test {
         vm.stopPrank();
     }
 
+    function repayUsdc(uint256 actorSeed, uint256 amount) public {
+        _useActor(actorSeed);
+        uint256 userDebtShares = pool.userDebtShares(address(usdc), currentActor);
+        if (userDebtShares == 0) return;
+
+        uint256 borrowIndex = pool.borrowIndex(address(usdc));
+        uint256 userDebtAmount = (userDebtShares * borrowIndex) / 1e18;
+        if (userDebtAmount == 0) return;
+
+        amount = bound(amount, 1, userDebtAmount);
+
+        vm.startPrank(currentActor);
+        try pool.repay(address(usdc), amount, currentActor) {
+            uint256 currentShares = pool.userDebtShares(address(usdc), currentActor);
+            uint256 prevShares = ghost_userUsdcDebtShares[currentActor];
+            uint256 burnedShares = prevShares - currentShares;
+
+            ghost_userUsdcDebtShares[currentActor] = currentShares;
+            ghost_sumUsdcDebtShares -= burnedShares;
+        } catch {}
+        vm.stopPrank();
+    }
+
     function warpTime(uint256 timeDelta) public {
         timeDelta = bound(timeDelta, 1 minutes, 30 days);
         vm.warp(block.timestamp + timeDelta);
