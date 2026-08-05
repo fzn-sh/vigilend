@@ -294,28 +294,7 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         uint256 actualDebtToCover = debtToCover > maxDebtToCover ? maxDebtToCover : debtToCover;
         if (actualDebtToCover == 0) actualDebtToCover = userDebtAmount;
 
-        // Calculate USD value of debt covered
-        (uint256 debtPrice, uint8 debtPriceDecimals) = oracle.getPrice(debtAsset);
-        require(oracle.isFresh(debtAsset), "STALE_PRICE");
-        uint256 debtScale = (10 ** assetConfigs[debtAsset].decimals) * (10 ** debtPriceDecimals);
-        uint256 debtCoveredUSD = (actualDebtToCover * debtPrice * 1e18) / debtScale;
-
-        // Calculate collateral value with liquidation bonus
-        uint256 collateralValueWithBonusUSD =
-            (debtCoveredUSD * (10000 + assetConfigs[collateralAsset].liquidationBonus)) / 10000;
-
-        (uint256 collateralPrice, uint8 collateralPriceDecimals) = oracle.getPrice(collateralAsset);
-        require(oracle.isFresh(collateralAsset), "STALE_PRICE");
-        uint256 collateralScale = (10 ** assetConfigs[collateralAsset].decimals) * (10 ** collateralPriceDecimals);
-        liquidatedCollateral = (collateralValueWithBonusUSD * collateralScale) / (collateralPrice * 1e18);
-
-        // Cap seized collateral to borrower's actual collateral
-        uint256 userCollateralAmount =
-            (userCollateralShares[collateralAsset][borrower] * totalCollateralAmount[collateralAsset])
-                / totalCollateralShares[collateralAsset];
-        if (liquidatedCollateral > userCollateralAmount) {
-            liquidatedCollateral = userCollateralAmount;
-        }
+        liquidatedCollateral = _calculateSeizedCollateral(collateralAsset, debtAsset, borrower, actualDebtToCover);
 
         // Execute debt shares reduction
         uint256 debtSharesToBurn = (actualDebtToCover * 1e18 + borrowIndex[debtAsset] - 1) / borrowIndex[debtAsset];
@@ -337,6 +316,38 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         IERC20(debtAsset).safeTransferFrom(msg.sender, address(this), actualDebtToCover);
 
         emit Liquidate(collateralAsset, debtAsset, borrower, msg.sender, actualDebtToCover, liquidatedCollateral);
+    }
+
+    function _calculateSeizedCollateral(
+        address collateralAsset,
+        address debtAsset,
+        address borrower,
+        uint256 actualDebtToCover
+    ) internal view returns (uint256 liquidatedCollateral) {
+        uint256 collateralValueWithBonusUSD;
+        {
+            (uint256 debtPrice, uint8 debtPriceDecimals) = oracle.getPrice(debtAsset);
+            require(oracle.isFresh(debtAsset), "STALE_PRICE");
+            uint256 debtScale = (10 ** assetConfigs[debtAsset].decimals) * (10 ** debtPriceDecimals);
+            uint256 debtCoveredUSD = (actualDebtToCover * debtPrice * 1e18) / debtScale;
+
+            collateralValueWithBonusUSD =
+                (debtCoveredUSD * (10000 + assetConfigs[collateralAsset].liquidationBonus)) / 10000;
+        }
+
+        {
+            (uint256 collateralPrice, uint8 collateralPriceDecimals) = oracle.getPrice(collateralAsset);
+            require(oracle.isFresh(collateralAsset), "STALE_PRICE");
+            uint256 collateralScale = (10 ** assetConfigs[collateralAsset].decimals) * (10 ** collateralPriceDecimals);
+            liquidatedCollateral = (collateralValueWithBonusUSD * collateralScale) / (collateralPrice * 1e18);
+
+            uint256 userCollateralAmount =
+                (userCollateralShares[collateralAsset][borrower] * totalCollateralAmount[collateralAsset])
+                    / totalCollateralShares[collateralAsset];
+            if (liquidatedCollateral > userCollateralAmount) {
+                liquidatedCollateral = userCollateralAmount;
+            }
+        }
     }
 
     /// @inheritdoc IVigilendPool
