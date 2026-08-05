@@ -34,12 +34,17 @@ async fn main() -> Result<()> {
         }
     };
 
-    let monitor = AccountMonitor::new(config.pool_address);
+    let mut monitor = AccountMonitor::new(config.pool_address);
     let executor = LiquidationExecutor::new(config.pool_address);
 
     info!("Liquidation Service active. Starting position monitoring loop...");
 
     loop {
+        // Scan RPC Node for active Borrow events
+        if let Err(err) = monitor.scan_new_borrowers(provider.clone(), 0).await {
+            warn!(error = %err, "Failed to scan new borrowers from RPC");
+        }
+
         let tracked_users = monitor.tracked_users.clone();
 
         for user in tracked_users {
@@ -92,6 +97,6 @@ async fn main() -> Result<()> {
             }
         }
 
-        sleep(Duration::from_secs(12)).await;
+        sleep(Duration::from_secs(5)).await;
     }
 }

@@ -45,6 +45,29 @@ impl AccountMonitor {
         self.tracked_users.len()
     }
 
+    /// Query Borrow events on-chain to discover active borrowers
+    pub async fn scan_new_borrowers(
+        &mut self,
+        provider: Arc<Provider<Http>>,
+        from_block: u64,
+    ) -> Result<usize> {
+        let contract = VigilendPoolContract::new(self.pool_address, provider);
+        let borrow_events = contract
+            .borrow_filter()
+            .from_block(from_block)
+            .query()
+            .await
+            .wrap_err("Failed to query Borrow events from RPC")?;
+
+        let mut new_count = 0;
+        for event in borrow_events {
+            if self.register_user(event.on_behalf_of) {
+                new_count += 1;
+            }
+        }
+        Ok(new_count)
+    }
+
     pub async fn fetch_account_summary(
         &self,
         provider: Arc<Provider<Http>>,
