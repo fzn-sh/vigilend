@@ -20,7 +20,7 @@ fn format_usd(val: U256) -> String {
 
 fn format_usdc(val: U256) -> String {
     let f = val.as_u128() as f64 / 1e6;
-    format!("${:.2} USDC", f)
+    format!("{:.2} USDC", f)
 }
 
 fn format_weth(val: U256) -> String {
@@ -38,9 +38,9 @@ async fn main() -> Result<()> {
         .with_target(false)
         .init();
 
-    info!("⚡ ========================================================== ⚡");
-    info!("🛡️  VIGILEND HIGH-FREQUENCY LIQUIDATION BOT SERVICE ACTIVE  🛡️");
-    info!("⚡ ========================================================== ⚡");
+    println!("┌──────────────────────────────────────────────────────────────────────────────┐");
+    println!("│  ⚡ VIGILEND HIGH-FREQUENCY QUANT LIQUIDATION ENGINE v0.1.0                   │");
+    println!("└──────────────────────────────────────────────────────────────────────────────┘");
 
     let config = Config::from_env()?;
     info!(
@@ -50,8 +50,8 @@ async fn main() -> Result<()> {
         weth = ?config.weth_address,
         usdc = ?config.usdc_address,
         liquidator = ?config.bot_address,
-        min_profit = %format!("${}.00", config.min_profit_usd),
-        "⚙️  Configuration Initialized"
+        min_profit = %format!("${:.2}", config.min_profit_usd as f64),
+        "⚙️  Quant Engine Parameters Initialized"
     );
 
     let provider = match Provider::<Http>::try_from(&config.rpc_url) {
@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     let mut monitor = AccountMonitor::new(config.pool_address);
     let executor = LiquidationExecutor::new(config.pool_address);
 
-    info!("📡 Monitoring loop online. Scanning on-chain events every 5s...");
+    info!("📡 Order Routing Active. Polling EVM state every 5s...");
 
     loop {
         // Scan RPC Node for active Borrow events
@@ -87,17 +87,19 @@ async fn main() -> Result<()> {
                         HF = %hf_str,
                         collateral = %col_str,
                         debt = %debt_str,
-                        "🔍 Monitored Borrower Position Check"
+                        "📊 Position Telemetry Check"
                     );
 
                     if summary.is_liquidatable() {
-                        warn!(
-                            borrower = ?user,
-                            HF = %hf_str,
-                            collateral = %col_str,
-                            debt = %debt_str,
-                            "🚨 DISTRESSED BORROWER DETECTED (HF < 1.0)!"
+                        println!("┌─ [TARGET ACQUIRED: DISTRESSED BORROWER] ──────────────────────────────────────┐");
+                        println!("│ Borrower Address : {:?}", user);
+                        println!("│ Collateral Value : {:<55} │", col_str);
+                        println!("│ Total Debt Value : {:<55} │", debt_str);
+                        println!(
+                            "│ Health Factor    : {:<12} [STATUS: CRITICAL < 1.0000]            │",
+                            hf_str
                         );
+                        println!("├─ [EXECUTION ROUTING] ─────────────────────────────────────────────────────────┤");
 
                         // Convert total_debt_usd (18 decimals) to debt_token amount (6 decimals for USDC)
                         let debt_token_amount =
@@ -118,11 +120,9 @@ async fn main() -> Result<()> {
                             U256::from(config.min_profit_usd),
                         ) {
                             let cover_str = format_usdc(target.debt_to_cover);
-                            info!(
-                                borrower = ?user,
-                                debt_to_cover = %cover_str,
-                                "🎯 Target Profitable. Executing eth_call Liquidation Simulation..."
-                            );
+                            println!("│ Pair Strategy    : WETH (Collateral) <==> USDC (Debt)                        │");
+                            println!("│ Debt Repay Amount: {:<55} │", cover_str);
+                            println!("│ Incentive Bonus  : +5.00% Liquidation Premium                             │");
 
                             match executor
                                 .simulate_liquidation(provider.clone(), &target, config.bot_address)
@@ -130,14 +130,13 @@ async fn main() -> Result<()> {
                             {
                                 Ok(seized) => {
                                     let seized_str = format_weth(seized);
-                                    info!(
-                                        borrower = ?user,
-                                        seized_collateral = %seized_str,
-                                        "✅ LIQUIDATION SIMULATION PASSED! PROFITABLE TARGET ACQUIRED 🎉"
-                                    );
+                                    println!("│ Simulation Result: eth_call SUCCESSFUL ✅                                    │");
+                                    println!("│ Seized Collateral: {:<55} │", seized_str);
+                                    println!("└───────────────────────────────────────────────────────────────────────────────┘");
                                 }
                                 Err(err) => {
-                                    error!(error = %err, "❌ Liquidation simulation failed / reverted.");
+                                    println!("│ Simulation Result: REVERTED ❌ ({:?})                                  │", err);
+                                    println!("└───────────────────────────────────────────────────────────────────────────────┘");
                                 }
                             }
                         }
