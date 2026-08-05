@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
     );
     println!("└────────────────────────────────────────────────────────────────────────────┘");
 
-    let config = Config::from_env()?;
+    let mut config = Config::from_env()?;
     info!(
         rpc = %config.rpc_url,
         pool = ?config.pool_address,
@@ -101,11 +101,27 @@ async fn main() -> Result<()> {
 
     info!("📡 Order Routing Active. Polling EVM state every 5s...");
 
-    let private_key = config.private_key.unwrap_or_else(|| {
+    let private_key = config.private_key.clone().unwrap_or_else(|| {
         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80".to_string()
     });
 
     loop {
+        // Dynamic Hot-Reloading of bot/.env config without restarting process
+        if let Ok(new_config) = Config::from_env() {
+            if new_config.use_flash_loan != config.use_flash_loan {
+                let mode_str = if new_config.use_flash_loan {
+                    "CAPITAL-FREE FLASH LOAN MODE (ON)"
+                } else {
+                    "DIRECT CAPITAL MODE (OFF)"
+                };
+                info!(
+                    strategy = %mode_str,
+                    "⚡ Dynamic Hot-Reload: Execution Strategy Toggled on the Fly!"
+                );
+                config.use_flash_loan = new_config.use_flash_loan;
+            }
+        }
+
         // Scan RPC Node for active Borrow events
         if let Err(err) = monitor.scan_new_borrowers(provider.clone(), 0).await {
             warn!(error = %err, "⚠️ Failed to scan new borrowers from RPC");
