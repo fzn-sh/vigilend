@@ -258,4 +258,65 @@ contract VigilendPoolTest is Test {
         // Verify liquidator (user2) received seized WETH collateral!
         assertTrue(weth.balanceOf(user2) > 0);
     }
+
+    function test_ReserveAccrualAndWithdrawal() public {
+        // Configure 10% reserve factor for USDC
+        pool.setReserveFactor(address(usdc), 1000);
+
+        // User2 deposits USDC and User1 deposits WETH + borrows USDC
+        vm.prank(user2);
+        pool.deposit(address(usdc), 50000 * 1e6, user2);
+
+        vm.prank(user1);
+        pool.deposit(address(weth), 10 ether, user1);
+
+        vm.prank(user1);
+        pool.borrow(address(usdc), 10000 * 1e6, user1);
+
+        // Warp 180 days to elapse time and accrue interest
+        vm.warp(block.timestamp + 180 days);
+        pool.accrueInterest(address(usdc));
+
+        uint256 reserve = pool.totalReserveAmount(address(usdc));
+        assertTrue(reserve > 0);
+
+        address treasury = address(0x99);
+        pool.withdrawReserve(address(usdc), reserve, treasury);
+
+        assertEq(usdc.balanceOf(treasury), reserve);
+        assertEq(pool.totalReserveAmount(address(usdc)), 0);
+    }
+
+    function test_SocializeBadDebtSuccess() public {
+        // User2 supplies USDC
+        vm.prank(user2);
+        pool.deposit(address(usdc), 50000 * 1e6, user2);
+
+        // User1 deposits 10 WETH ($30,000) and borrows 15,000 USDC ($15,000)
+        vm.prank(user1);
+        pool.deposit(address(weth), 10 ether, user1);
+
+        vm.prank(user1);
+        pool.borrow(address(usdc), 15000 * 1e6, user1);
+
+        // WETH price crashes to $1000 -> Liquidate undercollateralized position
+        oracle.setPrice(address(weth), 1000 * 1e8);
+
+        vm.startPrank(user2);
+        pool.liquidate(address(weth), address(usdc), user1, 7500 * 1e6);
+        pool.liquidate(address(weth), address(usdc), user1, 3750 * 1e6);
+        vm.stopPrank();
+
+        // WETH price drops further to $100 -> User1 has 0 collateral left, but remaining USDC debt
+        oracle.setPrice(address(weth), 100 * 1e8);
+
+        assertEq(pool.userCollateralShares(address(weth), user1), 0);
+        assertTrue(pool.userDebtShares(address(usdc), user1) > 0);
+
+        // Socialize remaining bad debt
+        uint256 socialized = pool.socializeBadDebt(address(weth), address(usdc), user1);
+
+        assertTrue(socialized > 0);
+        assertEq(pool.userDebtShares(address(usdc), user1), 0);
+    }
 }
