@@ -11,11 +11,7 @@ interface IFlashLoanReceiver {
     /// @param initiator Address that initiated the flash loan
     /// @param params Arbitrary call data passed from flashLoan call
     /// @return success True if the operation succeeded and funds can be pulled back
-    function executeOperation(
-        address asset,
-        uint256 amount,
-        uint256 premium,
-        address initiator,
-        bytes calldata params
-    ) external returns (bool success);
+    function executeOperation(address asset, uint256 amount, uint256 premium, address initiator, bytes calldata params)
+        external
+        returns (bool success);
 }

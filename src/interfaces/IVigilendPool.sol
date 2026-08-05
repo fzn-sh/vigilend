@@ -21,11 +21,7 @@ interface IVigilendPool {
         uint256 collateralSeized
     );
     event FlashLoan(
-        address indexed target,
-        address indexed initiator,
-        address indexed asset,
-        uint256 amount,
-        uint256 premium
+        address indexed target, address indexed initiator, address indexed asset, uint256 amount, uint256 premium
     );
 
     error InvalidAmount();

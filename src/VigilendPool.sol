@@ -120,11 +120,12 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     }
 
     /// @inheritdoc IVigilendPool
-    function deposit(
-        address asset,
-        uint256 amount,
-        address onBehalfOf
-    ) external override nonReentrant returns (uint256 shares) {
+    function deposit(address asset, uint256 amount, address onBehalfOf)
+        external
+        override
+        nonReentrant
+        returns (uint256 shares)
+    {
         if (amount == 0) revert InvalidAmount();
         if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
         if (onBehalfOf == address(0)) revert ZeroAddress();
@@ -153,11 +154,12 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     }
 
     /// @inheritdoc IVigilendPool
-    function withdraw(
-        address asset,
-        uint256 amount,
-        address to
-    ) external override nonReentrant returns (uint256 sharesBurned) {
+    function withdraw(address asset, uint256 amount, address to)
+        external
+        override
+        nonReentrant
+        returns (uint256 sharesBurned)
+    {
         if (amount == 0) revert InvalidAmount();
         if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
         if (to == address(0)) revert ZeroAddress();
@@ -188,11 +190,7 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     }
 
     /// @inheritdoc IVigilendPool
-    function borrow(
-        address asset,
-        uint256 amount,
-        address onBehalfOf
-    ) external override nonReentrant {
+    function borrow(address asset, uint256 amount, address onBehalfOf) external override nonReentrant {
         if (amount == 0) revert InvalidAmount();
         if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
         if (onBehalfOf == address(0)) revert ZeroAddress();
@@ -201,14 +199,16 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
 
         require(IERC20(asset).balanceOf(address(this)) >= amount, "INSUFFICIENT_POOL_LIQUIDITY");
 
-        uint256 newShares = (amount * 1e18) / borrowIndex[asset];
+        // Conservative share calculation: round up debt shares to prevent debt under-counting
+        uint256 newShares = (amount * 1e18 + borrowIndex[asset] - 1) / borrowIndex[asset];
         if (newShares == 0) revert InvalidAmount();
 
         userDebtShares[asset][onBehalfOf] += newShares;
         totalDebtShares[asset] += newShares;
 
         // Check LTV borrow limit and health factor post borrow
-        (uint256 totalCollateralUSD, uint256 totalDebtUSD,, , uint256 ltv, uint256 healthFactor) = getUserAccountData(onBehalfOf);
+        (uint256 totalCollateralUSD, uint256 totalDebtUSD,,, uint256 ltv, uint256 healthFactor) =
+            getUserAccountData(onBehalfOf);
         uint256 maxBorrowUSD = (totalCollateralUSD * ltv) / 10000;
         if (totalDebtUSD > maxBorrowUSD || healthFactor < 1e18) revert InsufficientCollateral();
 
@@ -218,11 +218,12 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     }
 
     /// @inheritdoc IVigilendPool
-    function repay(
-        address asset,
-        uint256 amount,
-        address onBehalfOf
-    ) external override nonReentrant returns (uint256 repaidAmount) {
+    function repay(address asset, uint256 amount, address onBehalfOf)
+        external
+        override
+        nonReentrant
+        returns (uint256 repaidAmount)
+    {
         if (amount == 0) revert InvalidAmount();
         if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
         if (onBehalfOf == address(0)) revert ZeroAddress();
@@ -249,12 +250,11 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     }
 
     /// @inheritdoc IVigilendPool
-    function liquidate(
-        address collateralAsset,
-        address debtAsset,
-        address borrower,
-        uint256 debtToCover
-    ) external override returns (uint256 liquidatedCollateral) {
+    function liquidate(address collateralAsset, address debtAsset, address borrower, uint256 debtToCover)
+        external
+        override
+        returns (uint256 liquidatedCollateral)
+    {
         if (debtToCover == 0) revert InvalidAmount();
         if (!assetConfigs[collateralAsset].isSupported || !assetConfigs[debtAsset].isSupported) {
             revert AssetNotSupported();
@@ -283,7 +283,8 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         uint256 debtCoveredUSD = (actualDebtToCover * debtPrice * 1e18) / debtScale;
 
         // Calculate collateral value with liquidation bonus
-        uint256 collateralValueWithBonusUSD = (debtCoveredUSD * (10000 + assetConfigs[collateralAsset].liquidationBonus)) / 10000;
+        uint256 collateralValueWithBonusUSD =
+            (debtCoveredUSD * (10000 + assetConfigs[collateralAsset].liquidationBonus)) / 10000;
 
         (uint256 collateralPrice, uint8 collateralPriceDecimals) = oracle.getPrice(collateralAsset);
         require(oracle.isFresh(collateralAsset), "STALE_PRICE");
@@ -291,7 +292,9 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         liquidatedCollateral = (collateralValueWithBonusUSD * collateralScale) / (collateralPrice * 1e18);
 
         // Cap seized collateral to borrower's actual collateral
-        uint256 userCollateralAmount = (userCollateralShares[collateralAsset][borrower] * totalCollateralAmount[collateralAsset]) / totalCollateralShares[collateralAsset];
+        uint256 userCollateralAmount =
+            (userCollateralShares[collateralAsset][borrower] * totalCollateralAmount[collateralAsset])
+                / totalCollateralShares[collateralAsset];
         if (liquidatedCollateral > userCollateralAmount) {
             liquidatedCollateral = userCollateralAmount;
         }
@@ -305,7 +308,8 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         totalDebtShares[debtAsset] -= debtSharesToBurn;
 
         // Execute collateral shares transfer to liquidator (msg.sender)
-        uint256 collateralSharesToSeize = (liquidatedCollateral * totalCollateralShares[collateralAsset]) / totalCollateralAmount[collateralAsset];
+        uint256 collateralSharesToSeize =
+            (liquidatedCollateral * totalCollateralShares[collateralAsset]) / totalCollateralAmount[collateralAsset];
         if (collateralSharesToSeize > userCollateralShares[collateralAsset][borrower]) {
             collateralSharesToSeize = userCollateralShares[collateralAsset][borrower];
         }
@@ -318,12 +322,11 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     }
 
     /// @inheritdoc IVigilendPool
-    function flashLoan(
-        address receiverAddress,
-        address asset,
-        uint256 amount,
-        bytes calldata params
-    ) external override nonReentrant {
+    function flashLoan(address receiverAddress, address asset, uint256 amount, bytes calldata params)
+        external
+        override
+        nonReentrant
+    {
         if (amount == 0) revert InvalidAmount();
         if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
         if (receiverAddress == address(0)) revert ZeroAddress();
@@ -366,13 +369,18 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
             AssetConfig memory config = assetConfigs[asset];
             if (!config.isSupported) continue;
 
+            uint256 uShares = userCollateralShares[asset][user];
+            uint256 dShares = userDebtShares[asset][user];
+
+            // Only query oracle if user holds collateral or debt in this asset to prevent DOS from unrelated stale feeds
+            if (uShares == 0 && dShares == 0) continue;
+
             (uint256 price, uint8 priceDecimals) = oracle.getPrice(asset);
             require(oracle.isFresh(asset), "STALE_PRICE");
 
             uint256 priceScale = (10 ** config.decimals) * (10 ** priceDecimals);
 
             // Collateral USD calculation
-            uint256 uShares = userCollateralShares[asset][user];
             if (uShares > 0 && totalCollateralShares[asset] > 0) {
                 uint256 cAmount = (uShares * totalCollateralAmount[asset]) / totalCollateralShares[asset];
                 uint256 cUSD = (cAmount * price * 1e18) / priceScale;
@@ -383,7 +391,6 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
             }
 
             // Debt USD calculation
-            uint256 dShares = userDebtShares[asset][user];
             if (dShares > 0) {
                 uint256 dAmount = (dShares * borrowIndex[asset]) / 1e18;
                 uint256 dUSD = (dAmount * price * 1e18) / priceScale;

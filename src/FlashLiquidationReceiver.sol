@@ -20,13 +20,11 @@ contract FlashLiquidationReceiver is IFlashLoanReceiver {
     }
 
     /// @inheritdoc IFlashLoanReceiver
-    function executeOperation(
-        address asset,
-        uint256 amount,
-        uint256 premium,
-        address initiator,
-        bytes calldata params
-    ) external override returns (bool success) {
+    function executeOperation(address asset, uint256 amount, uint256 premium, address initiator, bytes calldata params)
+        external
+        override
+        returns (bool success)
+    {
         require(msg.sender == pool, "ONLY_POOL");
         require(initiator == owner, "UNAUTHORIZED_INITIATOR");
 
