@@ -11,6 +11,8 @@ pub struct Config {
     pub weth_address: Address,
     pub usdc_address: Address,
     pub bot_address: Address,
+    pub flash_receiver_address: Option<Address>,
+    pub use_flash_loan: bool,
     pub private_key: Option<String>,
     pub simulation_only: bool,
     pub min_profit_usd: u64,
@@ -43,6 +45,15 @@ impl Config {
             .unwrap_or_else(|_| "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string());
         let bot_address = Address::from_str(&bot_str).wrap_err("Invalid BOT_ADDRESS format")?;
 
+        let flash_receiver_address = env::var("FLASH_RECEIVER_ADDRESS")
+            .ok()
+            .and_then(|s| Address::from_str(&s).ok());
+
+        let use_flash_loan = env::var("USE_FLASH_LOAN")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+
         let private_key = env::var("PRIVATE_KEY").ok();
 
         let simulation_only = env::var("SIMULATION_ONLY")
@@ -62,6 +73,8 @@ impl Config {
             weth_address,
             usdc_address,
             bot_address,
+            flash_receiver_address,
+            use_flash_loan,
             private_key,
             simulation_only,
             min_profit_usd,

@@ -34,6 +34,27 @@ impl LiquidationExecutor {
         call.calldata().unwrap_or_default()
     }
 
+    /// Build transaction call data for flashLoan(receiverAddress, asset, amount, params)
+    pub fn encode_flash_loan_calldata(
+        &self,
+        receiver: Address,
+        asset: Address,
+        amount: U256,
+        collateral_asset: Address,
+        borrower: Address,
+    ) -> Bytes {
+        let contract = VigilendPoolContract::new(
+            self.pool_address,
+            Arc::new(Provider::<Http>::try_from("http://127.0.0.1:8545").unwrap()),
+        );
+        let params = ethers::abi::encode(&[
+            ethers::abi::Token::Address(collateral_asset),
+            ethers::abi::Token::Address(borrower),
+        ]);
+        let call = contract.flash_loan(receiver, asset, amount, Bytes::from(params));
+        call.calldata().unwrap_or_default()
+    }
+
     /// Simulate liquidation transaction using eth_call
     pub async fn simulate_liquidation(
         &self,
@@ -120,5 +141,19 @@ mod tests {
         let calldata = executor.encode_liquidate_calldata(&target);
         assert!(!calldata.is_empty());
         assert_eq!(&calldata[0..4], &[0xaa, 0xb3, 0xf8, 0x68]); // liquidate selector
+    }
+
+    #[test]
+    fn test_encode_flash_loan_calldata() {
+        let executor = LiquidationExecutor::new(Address::zero());
+        let calldata = executor.encode_flash_loan_calldata(
+            Address::zero(),
+            Address::zero(),
+            U256::from(1000),
+            Address::zero(),
+            Address::zero(),
+        );
+        assert!(!calldata.is_empty());
+        assert_eq!(&calldata[0..4], &[0x5c, 0xff, 0xe9, 0xde]); // flashLoan selector
     }
 }

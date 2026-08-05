@@ -69,6 +69,7 @@ async fn main() -> Result<()> {
         weth = ?config.weth_address,
         usdc = ?config.usdc_address,
         liquidator = ?config.bot_address,
+        use_flash_loan = config.use_flash_loan,
         simulation_only = config.simulation_only,
         min_profit = %format!("${:.2}", config.min_profit_usd as f64),
         "⚙️  Quant Engine Parameters Initialized"
@@ -143,7 +144,12 @@ async fn main() -> Result<()> {
                             println!("├─ [EXECUTION ROUTING] ──────────────────────────────────────────────────────┤");
 
                             let cover_str = format_usdc(target.debt_to_cover);
-                            print_row("Pair Strategy", "WETH (Collateral) <==> USDC (Debt)");
+                            let strategy_str = if config.use_flash_loan {
+                                "WETH <==> USDC [CAPITAL-FREE FLASH LOAN]"
+                            } else {
+                                "WETH <==> USDC [DIRECT CAPITAL]"
+                            };
+                            print_row("Pair Strategy", strategy_str);
                             print_row("Debt Repay Amount", &cover_str);
                             print_row("Incentive Bonus", "+5.00% Liquidation Premium");
 

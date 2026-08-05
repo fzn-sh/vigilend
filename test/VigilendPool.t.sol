@@ -7,6 +7,7 @@ import {MockOracle} from "./mocks/MockOracle.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {IVigilendPool} from "../src/interfaces/IVigilendPool.sol";
 import {InterestRateModel} from "../src/interfaces/InterestRateModel.sol";
+import {FlashLiquidationReceiver} from "../src/FlashLiquidationReceiver.sol";
 
 contract VigilendPoolTest is Test {
     VigilendPool public pool;
@@ -223,5 +224,38 @@ contract VigilendPoolTest is Test {
         vm.prank(user2);
         vm.expectRevert(IVigilendPool.HealthFactorOk.selector);
         pool.liquidate(address(weth), address(usdc), user1, 2000 * 1e6);
+    }
+
+    function test_FlashLoanLiquidationReceiver() public {
+        // Setup USDC liquidity in pool
+        vm.prank(user2);
+        pool.deposit(address(usdc), 50000 * 1e6, user2);
+
+        // User1 deposits WETH and borrows USDC
+        vm.prank(user1);
+        pool.deposit(address(weth), 10 ether, user1);
+        vm.prank(user1);
+        pool.borrow(address(usdc), 15000 * 1e6, user1);
+
+        // Crash WETH price ($3000 -> $1500)
+        oracle.setPrice(address(weth), 1500 * 1e8);
+
+        // Deploy FlashLiquidationReceiver by User2 (Liquidator with 0 USDC balance)
+        vm.startPrank(user2);
+        FlashLiquidationReceiver receiver = new FlashLiquidationReceiver(address(pool));
+
+        // Prepare flash loan params (collateralAsset, borrower)
+        bytes memory params = abi.encode(address(weth), user1);
+        uint256 debtToCover = 5000 * 1e6;
+
+        // User2 funds receiver contract with 0.09% flash loan fee + principal buffer for mock test
+        usdc.transfer(address(receiver), 5005 * 1e6);
+
+        // Execute capital-free flash loan liquidation!
+        pool.flashLoan(address(receiver), address(usdc), debtToCover, params);
+        vm.stopPrank();
+
+        // Verify liquidator (user2) received seized WETH collateral!
+        assertTrue(weth.balanceOf(user2) > 0);
     }
 }

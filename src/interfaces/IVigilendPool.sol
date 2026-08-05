@@ -20,6 +20,13 @@ interface IVigilendPool {
         uint256 debtRepaid,
         uint256 collateralSeized
     );
+    event FlashLoan(
+        address indexed target,
+        address indexed initiator,
+        address indexed asset,
+        uint256 amount,
+        uint256 premium
+    );
 
     error InvalidAmount();
     error AssetNotSupported();
@@ -28,6 +35,7 @@ interface IVigilendPool {
     error HealthFactorTooLow();
     error StalePrice();
     error ZeroAddress();
+    error FlashLoanFailed();
 
     /// @notice Supply assets into the protocol to earn interest or use as collateral
     /// @param asset Address of the ERC-20 token to deposit
@@ -65,6 +73,13 @@ interface IVigilendPool {
     function liquidate(address collateralAsset, address debtAsset, address borrower, uint256 debtToCover)
         external
         returns (uint256 liquidatedCollateral);
+
+    /// @notice Execute an uncollateralized Flash Loan
+    /// @param receiverAddress Contract executing IFlashLoanReceiver interface
+    /// @param asset Token to flash-loan
+    /// @param amount Amount of tokens to flash-loan
+    /// @param params Custom calldata forwarded to executeOperation
+    function flashLoan(address receiverAddress, address asset, uint256 amount, bytes calldata params) external;
 
     /// @notice Get account health status and collateral/debt values in USD
     /// @param user Address of the user

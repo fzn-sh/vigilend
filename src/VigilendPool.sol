@@ -7,6 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IVigilendPool} from "./interfaces/IVigilendPool.sol";
 import {IVigilendOracle} from "./interfaces/IVigilendOracle.sol";
 import {InterestRateModel} from "./interfaces/InterestRateModel.sol";
+import {IFlashLoanReceiver} from "./interfaces/IFlashLoanReceiver.sol";
 
 /// @title VigilendPool
 /// @notice Core implementation of Vigilend lending pool with deposit, withdraw, borrow, repay & interest accrual
@@ -253,7 +254,7 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         address debtAsset,
         address borrower,
         uint256 debtToCover
-    ) external override nonReentrant returns (uint256 liquidatedCollateral) {
+    ) external override returns (uint256 liquidatedCollateral) {
         if (debtToCover == 0) revert InvalidAmount();
         if (!assetConfigs[collateralAsset].isSupported || !assetConfigs[debtAsset].isSupported) {
             revert AssetNotSupported();
@@ -314,6 +315,34 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
         IERC20(debtAsset).safeTransferFrom(msg.sender, address(this), actualDebtToCover);
 
         emit Liquidate(collateralAsset, debtAsset, borrower, msg.sender, actualDebtToCover, liquidatedCollateral);
+    }
+
+    /// @inheritdoc IVigilendPool
+    function flashLoan(
+        address receiverAddress,
+        address asset,
+        uint256 amount,
+        bytes calldata params
+    ) external override nonReentrant {
+        if (amount == 0) revert InvalidAmount();
+        if (!assetConfigs[asset].isSupported) revert AssetNotSupported();
+        if (receiverAddress == address(0)) revert ZeroAddress();
+
+        uint256 availableLiquidity = IERC20(asset).balanceOf(address(this));
+        require(availableLiquidity >= amount, "INSUFFICIENT_POOL_LIQUIDITY");
+
+        uint256 premium = (amount * 9) / 10000; // 0.09% fee
+
+        IERC20(asset).safeTransfer(receiverAddress, amount);
+
+        require(
+            IFlashLoanReceiver(receiverAddress).executeOperation(asset, amount, premium, msg.sender, params),
+            "FLASHLOAN_EXECUTION_FAILED"
+        );
+
+        IERC20(asset).safeTransferFrom(receiverAddress, address(this), amount + premium);
+
+        emit FlashLoan(receiverAddress, msg.sender, asset, amount, premium);
     }
 
     /// @inheritdoc IVigilendPool

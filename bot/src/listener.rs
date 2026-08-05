@@ -13,9 +13,11 @@ abigen!(
     r#"[
         function getUserAccountData(address user) external view returns (uint256 totalCollateralUSD, uint256 totalDebtUSD, uint256 availableBorrowsUSD, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)
         function liquidate(address collateralAsset, address debtAsset, address borrower, uint256 debtToCover) external returns (uint256)
+        function flashLoan(address receiverAddress, address asset, uint256 amount, bytes params) external
         event Deposit(address indexed asset, address indexed caller, address indexed onBehalfOf, uint256 amount, uint256 shares)
         event Borrow(address indexed asset, address indexed caller, address indexed onBehalfOf, uint256 amount)
         event Liquidate(address indexed collateralAsset, address indexed debtAsset, address indexed borrower, address liquidator, uint256 debtToCover, uint256 liquidatedCollateral)
+        event FlashLoan(address indexed target, address indexed initiator, address indexed asset, uint256 amount, uint256 premium)
     ]"#
 );
 
