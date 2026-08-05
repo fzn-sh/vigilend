@@ -4,7 +4,7 @@ use eyre::Result;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use vigilend_bot::{AccountMonitor, Config, Evaluator, LiquidationExecutor, LiquidationTarget};
 
@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
                     let col_str = format_usd(summary.total_collateral_usd);
                     let debt_str = format_usd(summary.total_debt_usd);
 
-                    info!(
+                    debug!(
                         borrower = ?user,
                         HF = %hf_str,
                         collateral = %col_str,
