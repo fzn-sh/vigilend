@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
 
     println!("┌────────────────────────────────────────────────────────────────────────────┐");
     println!(
-        "│ {}{}⚡ VIGILEND HIGH-FREQUENCY QUANT LIQUIDATION ENGINE v0.1.0 (LIVE){}    │",
+        "│ {}{}⚡ VIGILEND HIGH-FREQUENCY LIQUIDATION ENGINE v0.1.0 (LIVE){}    │",
         C_BOLD, C_CYAN, C_RESET
     );
     println!("└────────────────────────────────────────────────────────────────────────────┘");

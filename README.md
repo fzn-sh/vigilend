@@ -1,4 +1,4 @@
-# ⚡ Vigilend — High-Frequency EVM Lending Protocol & MEV Liquidation Bot
+# Vigilend — EVM Lending Protocol & MEV Liquidation Bot
 
 Vigilend is a safety-critical, modular, overcollateralized lending protocol composed of:
 1. **Solidity Protocol Core (`src/`)**: High-performance lending pool, dynamic variable interest rate model, price oracle adapters, and capital-free Flash Loans.
