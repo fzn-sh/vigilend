@@ -11,6 +11,8 @@ pub struct Config {
     pub weth_address: Address,
     pub usdc_address: Address,
     pub bot_address: Address,
+    pub private_key: Option<String>,
+    pub simulation_only: bool,
     pub min_profit_usd: u64,
 }
 
@@ -41,6 +43,13 @@ impl Config {
             .unwrap_or_else(|_| "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string());
         let bot_address = Address::from_str(&bot_str).wrap_err("Invalid BOT_ADDRESS format")?;
 
+        let private_key = env::var("PRIVATE_KEY").ok();
+
+        let simulation_only = env::var("SIMULATION_ONLY")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+
         let min_profit_usd = env::var("MIN_PROFIT_USD")
             .unwrap_or_else(|_| "10".to_string())
             .parse::<u64>()
@@ -53,6 +62,8 @@ impl Config {
             weth_address,
             usdc_address,
             bot_address,
+            private_key,
+            simulation_only,
             min_profit_usd,
         })
     }

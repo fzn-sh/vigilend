@@ -1,6 +1,8 @@
+use ethers::middleware::SignerMiddleware;
 use ethers::providers::{Http, Middleware, Provider};
+use ethers::signers::{LocalWallet, Signer};
 use ethers::types::transaction::eip2718::TypedTransaction;
-use ethers::types::{Address, Bytes, TransactionRequest, U256};
+use ethers::types::{Address, Bytes, TransactionReceipt, TransactionRequest, U256};
 use eyre::{Result, WrapErr};
 use std::sync::Arc;
 use tracing::debug;
@@ -65,6 +67,38 @@ impl LiquidationExecutor {
         );
 
         Ok(seized_collateral)
+    }
+
+    /// Execute real liquidation transaction on-chain signed with private key
+    pub async fn execute_liquidation(
+        &self,
+        provider: Arc<Provider<Http>>,
+        target: &LiquidationTarget,
+        private_key: &str,
+    ) -> Result<TransactionReceipt> {
+        let wallet: LocalWallet = private_key
+            .parse::<LocalWallet>()
+            .wrap_err("Invalid private key format")?
+            .with_chain_id(31337u64);
+
+        let client = SignerMiddleware::new(provider, wallet);
+        let calldata = self.encode_liquidate_calldata(target);
+
+        let tx = TransactionRequest::new()
+            .to(self.pool_address)
+            .data(calldata);
+
+        let pending_tx = client
+            .send_transaction(tx, None)
+            .await
+            .wrap_err("Failed to broadcast liquidation transaction")?;
+
+        let receipt = pending_tx
+            .await
+            .wrap_err("Failed while waiting for transaction receipt")?
+            .ok_or_else(|| eyre::eyre!("Transaction dropped from mempool"))?;
+
+        Ok(receipt)
     }
 }
 

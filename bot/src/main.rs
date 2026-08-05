@@ -8,6 +8,13 @@ use tracing::{error, info, warn};
 
 use vigilend_bot::{AccountMonitor, Config, Evaluator, LiquidationExecutor, LiquidationTarget};
 
+// ANSI Color Escape Constants for Quant Dashboard
+const C_RESET: &str = "\x1b[0m";
+const C_BOLD: &str = "\x1b[1m";
+const C_RED: &str = "\x1b[31m";
+const C_GREEN: &str = "\x1b[32m";
+const C_CYAN: &str = "\x1b[36m";
+
 fn format_units_18(val: U256) -> String {
     let f = val.as_u128() as f64 / 1e18;
     format!("{:.4}", f)
@@ -43,7 +50,10 @@ async fn main() -> Result<()> {
         .init();
 
     println!("┌────────────────────────────────────────────────────────────────────────────┐");
-    println!("│ ⚡ VIGILEND HIGH-FREQUENCY QUANT LIQUIDATION ENGINE v0.1.0                 │");
+    println!(
+        "│ {}{}⚡ VIGILEND HIGH-FREQUENCY QUANT LIQUIDATION ENGINE v0.1.0 (LIVE){}    │",
+        C_BOLD, C_CYAN, C_RESET
+    );
     println!("└────────────────────────────────────────────────────────────────────────────┘");
 
     let config = Config::from_env()?;
@@ -54,6 +64,7 @@ async fn main() -> Result<()> {
         weth = ?config.weth_address,
         usdc = ?config.usdc_address,
         liquidator = ?config.bot_address,
+        simulation_only = config.simulation_only,
         min_profit = %format!("${:.2}", config.min_profit_usd as f64),
         "⚙️  Quant Engine Parameters Initialized"
     );
@@ -70,6 +81,10 @@ async fn main() -> Result<()> {
     let executor = LiquidationExecutor::new(config.pool_address);
 
     info!("📡 Order Routing Active. Polling EVM state every 5s...");
+
+    let private_key = config.private_key.unwrap_or_else(|| {
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80".to_string()
+    });
 
     loop {
         // Scan RPC Node for active Borrow events
@@ -95,7 +110,8 @@ async fn main() -> Result<()> {
                     );
 
                     if summary.is_liquidatable() {
-                        let hf_status = format!("{} [STATUS: CRITICAL < 1.0000]", hf_str);
+                        let hf_status =
+                            format!("{}{} [CRITICAL < 1.0000]{}", C_RED, hf_str, C_RESET);
 
                         println!("┌─ [TARGET ACQUIRED: DISTRESSED BORROWER] ───────────────────────────────────┐");
                         print_row("Borrower Address", &format!("{:?}", user));
@@ -133,15 +149,51 @@ async fn main() -> Result<()> {
                             {
                                 Ok(seized) => {
                                     let seized_str = format_weth(seized);
-                                    print_row("Simulation Result", "eth_call SUCCESSFUL [OK]");
+                                    let sim_res =
+                                        format!("{}eth_call SUCCESSFUL [OK]{}", C_GREEN, C_RESET);
+                                    print_row("Simulation Result", &sim_res);
                                     print_row("Seized Collateral", &seized_str);
+
+                                    if !config.simulation_only {
+                                        info!("🚀 BROADCASTING LIVE ON-CHAIN LIQUIDATION TRANSACTION...");
+                                        match executor
+                                            .execute_liquidation(
+                                                provider.clone(),
+                                                &target,
+                                                &private_key,
+                                            )
+                                            .await
+                                        {
+                                            Ok(receipt) => {
+                                                let tx_hash_str =
+                                                    format!("{:?}", receipt.transaction_hash);
+                                                let block_str = format!(
+                                                    "{:?}",
+                                                    receipt.block_number.unwrap_or_default()
+                                                );
+                                                let live_res = format!(
+                                                    "{}{} CONFIRMED (Block #{}){}",
+                                                    C_BOLD, C_GREEN, block_str, C_RESET
+                                                );
+                                                print_row("On-Chain Execution", &live_res);
+                                                print_row("Transaction Hash", &tx_hash_str);
+                                            }
+                                            Err(err) => {
+                                                let err_str = format!(
+                                                    "{}FAILED ({:?}){}",
+                                                    C_RED, err, C_RESET
+                                                );
+                                                print_row("On-Chain Execution", &err_str);
+                                            }
+                                        }
+                                    }
+
                                     println!("└────────────────────────────────────────────────────────────────────────────┘");
                                 }
                                 Err(err) => {
-                                    print_row(
-                                        "Simulation Result",
-                                        &format!("REVERTED [ERR: {:?}]", err),
-                                    );
+                                    let err_str =
+                                        format!("{}REVERTED [ERR: {:?}]{}", C_RED, err, C_RESET);
+                                    print_row("Simulation Result", &err_str);
                                     println!("└────────────────────────────────────────────────────────────────────────────┘");
                                 }
                             }
