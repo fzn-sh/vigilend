@@ -28,13 +28,13 @@ create_distressed_borrower() {
     echo "1. Resetting WETH Price in MockOracle back to $3,000 initial price..."
     cast send "$ORACLE" "setPrice(address,uint256)" "$WETH" 300000000000 --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
 
-    echo "2. Minting USDC liquidity to pool and FlashReceiver fee buffer..."
-    cast send "$USDC" "mint(address,uint256)" "$DEPLOYER_ADDR" 5000000000000 --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
-    cast send "$USDC" "mint(address,uint256)" "$FLASH_RECEIVER" 100000000000 --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
+    echo "2. Minting 10,000,000 USDC liquidity to pool and FlashReceiver..."
+    cast send "$USDC" "mint(address,uint256)" "$DEPLOYER_ADDR" 10000000000000 --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
+    cast send "$USDC" "mint(address,uint256)" "$FLASH_RECEIVER" 10000000000000 --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
 
-    echo "3. Deployer approving max USDC allowance to pool and depositing 500,000 USDC..."
+    echo "3. Deployer approving max USDC allowance to pool and depositing 1,000,000 USDC..."
     cast send "$USDC" "approve(address,uint256)" "$POOL" 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
-    cast send "$POOL" "deposit(address,uint256,address)" "$USDC" 5000000000000 "$DEPLOYER_ADDR" --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
+    cast send "$POOL" "deposit(address,uint256,address)" "$USDC" 1000000000000 "$DEPLOYER_ADDR" --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
     cast send "$USDC" "approve(address,uint256)" "$POOL" 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
 
     echo "4. Funding fresh borrower $BORROWER_ADDR with 1 ETH gas..."
