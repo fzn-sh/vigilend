@@ -23,12 +23,30 @@ impl Evaluator {
     /// Check if target is profitable based on minimum required profit threshold
     pub fn is_profitable(
         account: &UserAccountSummary,
-        estimated_profit_usd: U256,
+        debt_to_cover_usd: U256,
         min_profit_usd: U256,
     ) -> bool {
-        account.is_liquidatable()
-            && !account.total_collateral_usd.is_zero()
-            && estimated_profit_usd >= min_profit_usd
+        if !account.is_liquidatable() || account.total_collateral_usd.is_zero() {
+            return false;
+        }
+
+        // Collateral value MUST be greater than debt_to_cover_usd, otherwise liquidating is a net loss
+        if account.total_collateral_usd <= debt_to_cover_usd {
+            return false;
+        }
+
+        // 5% liquidation bonus profit
+        let bonus_profit = (debt_to_cover_usd * U256::from(500)) / U256::from(10000);
+
+        // Max bonus is capped by actual remaining collateral minus debt_to_cover
+        let max_bonus = account.total_collateral_usd - debt_to_cover_usd;
+        let actual_profit = if bonus_profit > max_bonus {
+            max_bonus
+        } else {
+            bonus_profit
+        };
+
+        actual_profit >= min_profit_usd
     }
 }
 
@@ -70,5 +88,27 @@ mod tests {
 
         let profit = Evaluator::estimate_profit_usd(debt_usd, bonus_bps, gas_cost);
         assert_eq!(profit, U256::from(1_000_000_000_000_000_000u128 * 40)); // $40 USD net profit
+    }
+
+    #[test]
+    fn test_underwater_bad_debt_profitability() {
+        let underwater_account = UserAccountSummary {
+            user: Address::zero(),
+            total_collateral_usd: U256::from(1000), // $1,000 collateral
+            total_debt_usd: U256::from(10000),      // $10,000 debt ($5,000 to cover)
+            available_borrows_usd: U256::zero(),
+            current_liquidation_threshold: U256::from(8000),
+            ltv: U256::from(7500),
+            health_factor: U256::from(100_000_000_000_000_000u64), // 0.1
+        };
+
+        // Debt to cover is $5,000, but Collateral is only $1,000 -> Liquidating is a -$4,000 loss!
+        let debt_to_cover_usd = U256::from(5000);
+        let min_profit = U256::from(10);
+        assert!(!Evaluator::is_profitable(
+            &underwater_account,
+            debt_to_cover_usd,
+            min_profit
+        ));
     }
 }

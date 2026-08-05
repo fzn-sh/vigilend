@@ -149,6 +149,7 @@ async fn main() -> Result<()> {
                         let debt_token_amount =
                             summary.total_debt_usd / U256::from(1_000_000_000_000u64); // 18 -> 6 decimals
                         let debt_to_cover = debt_token_amount / U256::from(2); // Close factor 50%
+                        let debt_to_cover_usd = summary.total_debt_usd / U256::from(2);
 
                         let target = LiquidationTarget {
                             borrower: user,
@@ -160,8 +161,8 @@ async fn main() -> Result<()> {
 
                         if Evaluator::is_profitable(
                             &summary,
-                            target.estimated_profit_usd,
-                            U256::from(config.min_profit_usd),
+                            debt_to_cover_usd,
+                            U256::from(config.min_profit_usd * 1_000_000_000_000_000_000u64), // 18 decimals USD
                         ) {
                             let hf_status = format!("{} [STATUS: CRITICAL < 1.0000]", hf_str);
 
