@@ -32,9 +32,10 @@ create_distressed_borrower() {
     cast send "$USDC" "mint(address,uint256)" "$DEPLOYER_ADDR" 5000000000000 --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
     cast send "$USDC" "mint(address,uint256)" "$FLASH_RECEIVER" 100000000000 --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
 
-    echo "3. Deployer depositing 500,000 USDC pool liquidity..."
-    cast send "$USDC" "approve(address,uint256)" "$POOL" 5000000000000 --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
+    echo "3. Deployer approving max USDC allowance to pool and depositing 500,000 USDC..."
+    cast send "$USDC" "approve(address,uint256)" "$POOL" 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
     cast send "$POOL" "deposit(address,uint256,address)" "$USDC" 5000000000000 "$DEPLOYER_ADDR" --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
+    cast send "$USDC" "approve(address,uint256)" "$POOL" 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
 
     echo "4. Funding fresh borrower $BORROWER_ADDR with 1 ETH gas..."
     cast send "$BORROWER_ADDR" --value 1ether --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
