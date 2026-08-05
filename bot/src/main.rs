@@ -29,7 +29,7 @@ fn format_weth(val: U256) -> String {
 }
 
 fn print_row(label: &str, val: &str) {
-    println!("│ {:<18}: {:<53} │", label, val);
+    println!("│ {:<18}: {:<54} │", label, val);
 }
 
 #[tokio::main]
@@ -133,14 +133,14 @@ async fn main() -> Result<()> {
                             {
                                 Ok(seized) => {
                                     let seized_str = format_weth(seized);
-                                    print_row("Simulation Result", "eth_call SUCCESSFUL ✅");
+                                    print_row("Simulation Result", "eth_call SUCCESSFUL [OK]");
                                     print_row("Seized Collateral", &seized_str);
                                     println!("└────────────────────────────────────────────────────────────────────────────┘");
                                 }
                                 Err(err) => {
                                     print_row(
                                         "Simulation Result",
-                                        &format!("REVERTED ❌ ({:?})", err),
+                                        &format!("REVERTED [ERR: {:?}]", err),
                                     );
                                     println!("└────────────────────────────────────────────────────────────────────────────┘");
                                 }
