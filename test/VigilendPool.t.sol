@@ -12,6 +12,7 @@ contract VigilendPoolTest is Test {
     VigilendPool public pool;
     MockOracle public oracle;
     MockERC20 public weth;
+    MockERC20 public usdc;
 
     address public constant user1 = address(0x1);
     address public constant user2 = address(0x2);
@@ -20,22 +21,33 @@ contract VigilendPoolTest is Test {
         oracle = new MockOracle();
         pool = new VigilendPool(address(oracle));
         weth = new MockERC20("Wrapped Ether", "WETH", 18);
+        usdc = new MockERC20("USD Coin", "USDC", 6);
 
         // Set Asset Config & Interest Rate Model
         pool.setAssetConfig(address(weth), 7500, 8000, 500, 18);
+        pool.setAssetConfig(address(usdc), 8500, 9000, 500, 6);
         InterestRateModel rateModel = new InterestRateModel();
         pool.setInterestRateModel(address(rateModel));
         oracle.setPrice(address(weth), 3000 * 1e8); // $3000
+        oracle.setPrice(address(usdc), 1 * 1e8); // $1
 
-        // Mint initial WETH to users
+        // Mint initial WETH & USDC to users
         weth.mint(user1, 100 ether);
         weth.mint(user2, 100 ether);
+        usdc.mint(user1, 100000 * 1e6);
+        usdc.mint(user2, 100000 * 1e6);
 
         vm.prank(user1);
         weth.approve(address(pool), type(uint256).max);
 
         vm.prank(user2);
         weth.approve(address(pool), type(uint256).max);
+
+        vm.prank(user1);
+        usdc.approve(address(pool), type(uint256).max);
+
+        vm.prank(user2);
+        usdc.approve(address(pool), type(uint256).max);
     }
 
     function test_BorrowIndexInitialization() public view {
@@ -164,5 +176,52 @@ contract VigilendPoolTest is Test {
         vm.prank(user1);
         vm.expectRevert(IVigilendPool.InsufficientCollateral.selector);
         pool.borrow(address(weth), 8 ether, user1); // 8 WETH = $24,000 > $22,500 -> Reverts!
+    }
+
+    function test_LiquidateSuccess() public {
+        // user2 supplies USDC to liquidity pool so user1 can borrow USDC
+        vm.prank(user2);
+        pool.deposit(address(usdc), 50000 * 1e6, user2);
+
+        // user1 deposits 10 WETH ($30,000 USD collateral)
+        vm.prank(user1);
+        pool.deposit(address(weth), 10 ether, user1);
+
+        // user1 borrows 15,000 USDC ($15,000 USD debt)
+        vm.prank(user1);
+        pool.borrow(address(usdc), 15000 * 1e6, user1);
+
+        // WETH price crashes from $3000 to $1800
+        // Collateral = 10 * $1800 = $18,000 USD
+        // Max Liquidation Threshold Value = $18,000 * 80% = $14,400 USD
+        // Debt = $15,000 USD -> HF = $14,400 / $15,000 = 0.96 < 1.0 (Liquidatable!)
+        oracle.setPrice(address(weth), 1800 * 1e8);
+
+        (,,,,, uint256 healthFactor) = pool.getUserAccountData(user1);
+        assertTrue(healthFactor < 1e18);
+
+        // Liquidator (user2) liquidates user1's position for 5,000 USDC
+        vm.prank(user2);
+        uint256 seizedCollateral = pool.liquidate(address(weth), address(usdc), user1, 5000 * 1e6);
+
+        // 5000 USDC + 5% bonus = $5250 USD collateral seized
+        assertTrue(seizedCollateral > 0);
+        assertTrue(pool.userCollateralShares(address(weth), user2) > 0);
+    }
+
+    function test_RevertWhen_LiquidateHealthyUser() public {
+        vm.prank(user2);
+        pool.deposit(address(usdc), 50000 * 1e6, user2);
+
+        vm.prank(user1);
+        pool.deposit(address(weth), 10 ether, user1);
+
+        vm.prank(user1);
+        pool.borrow(address(usdc), 5000 * 1e6, user1);
+
+        // User1 HF is healthy (> 1.0)
+        vm.prank(user2);
+        vm.expectRevert(IVigilendPool.HealthFactorOk.selector);
+        pool.liquidate(address(weth), address(usdc), user1, 2000 * 1e6);
     }
 }

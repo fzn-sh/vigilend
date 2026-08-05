@@ -248,8 +248,72 @@ contract VigilendPool is IVigilendPool, ReentrancyGuard {
     }
 
     /// @inheritdoc IVigilendPool
-    function liquidate(address, address, address, uint256) external pure override returns (uint256) {
-        revert("NOT_IMPLEMENTED_YET");
+    function liquidate(
+        address collateralAsset,
+        address debtAsset,
+        address borrower,
+        uint256 debtToCover
+    ) external override nonReentrant returns (uint256 liquidatedCollateral) {
+        if (debtToCover == 0) revert InvalidAmount();
+        if (!assetConfigs[collateralAsset].isSupported || !assetConfigs[debtAsset].isSupported) {
+            revert AssetNotSupported();
+        }
+        if (borrower == address(0)) revert ZeroAddress();
+
+        accrueInterest(collateralAsset);
+        accrueInterest(debtAsset);
+
+        // Verify borrower is actually undercollateralized (Health Factor < 1.0)
+        (,,,,, uint256 healthFactor) = getUserAccountData(borrower);
+        if (healthFactor >= 1e18) revert HealthFactorOk();
+
+        uint256 userDebtAmount = (userDebtShares[debtAsset][borrower] * borrowIndex[debtAsset]) / 1e18;
+        require(userDebtAmount > 0, "NO_DEBT");
+
+        // Close factor: Liquidate max 50% of borrower debt per tx, unless debt is very small
+        uint256 maxDebtToCover = userDebtAmount / 2;
+        uint256 actualDebtToCover = debtToCover > maxDebtToCover ? maxDebtToCover : debtToCover;
+        if (actualDebtToCover == 0) actualDebtToCover = userDebtAmount;
+
+        // Calculate USD value of debt covered
+        (uint256 debtPrice, uint8 debtPriceDecimals) = oracle.getPrice(debtAsset);
+        require(oracle.isFresh(debtAsset), "STALE_PRICE");
+        uint256 debtScale = (10 ** assetConfigs[debtAsset].decimals) * (10 ** debtPriceDecimals);
+        uint256 debtCoveredUSD = (actualDebtToCover * debtPrice * 1e18) / debtScale;
+
+        // Calculate collateral value with liquidation bonus
+        uint256 collateralValueWithBonusUSD = (debtCoveredUSD * (10000 + assetConfigs[collateralAsset].liquidationBonus)) / 10000;
+
+        (uint256 collateralPrice, uint8 collateralPriceDecimals) = oracle.getPrice(collateralAsset);
+        require(oracle.isFresh(collateralAsset), "STALE_PRICE");
+        uint256 collateralScale = (10 ** assetConfigs[collateralAsset].decimals) * (10 ** collateralPriceDecimals);
+        liquidatedCollateral = (collateralValueWithBonusUSD * collateralScale) / (collateralPrice * 1e18);
+
+        // Cap seized collateral to borrower's actual collateral
+        uint256 userCollateralAmount = (userCollateralShares[collateralAsset][borrower] * totalCollateralAmount[collateralAsset]) / totalCollateralShares[collateralAsset];
+        if (liquidatedCollateral > userCollateralAmount) {
+            liquidatedCollateral = userCollateralAmount;
+        }
+
+        // Execute debt shares reduction
+        uint256 debtSharesToBurn = (actualDebtToCover * 1e18 + borrowIndex[debtAsset] - 1) / borrowIndex[debtAsset];
+        if (debtSharesToBurn > userDebtShares[debtAsset][borrower]) {
+            debtSharesToBurn = userDebtShares[debtAsset][borrower];
+        }
+        userDebtShares[debtAsset][borrower] -= debtSharesToBurn;
+        totalDebtShares[debtAsset] -= debtSharesToBurn;
+
+        // Execute collateral shares transfer to liquidator (msg.sender)
+        uint256 collateralSharesToSeize = (liquidatedCollateral * totalCollateralShares[collateralAsset]) / totalCollateralAmount[collateralAsset];
+        if (collateralSharesToSeize > userCollateralShares[collateralAsset][borrower]) {
+            collateralSharesToSeize = userCollateralShares[collateralAsset][borrower];
+        }
+        userCollateralShares[collateralAsset][borrower] -= collateralSharesToSeize;
+        userCollateralShares[collateralAsset][msg.sender] += collateralSharesToSeize;
+
+        IERC20(debtAsset).safeTransferFrom(msg.sender, address(this), actualDebtToCover);
+
+        emit Liquidate(collateralAsset, debtAsset, borrower, msg.sender, actualDebtToCover, liquidatedCollateral);
     }
 
     /// @inheritdoc IVigilendPool
