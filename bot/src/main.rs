@@ -28,6 +28,10 @@ fn format_weth(val: U256) -> String {
     format!("{:.4} WETH", f)
 }
 
+fn print_row(label: &str, val: &str) {
+    println!("│ {:<18}: {:<53} │", label, val);
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -38,9 +42,9 @@ async fn main() -> Result<()> {
         .with_target(false)
         .init();
 
-    println!("┌──────────────────────────────────────────────────────────────────────────────┐");
-    println!("│  ⚡ VIGILEND HIGH-FREQUENCY QUANT LIQUIDATION ENGINE v0.1.0                   │");
-    println!("└──────────────────────────────────────────────────────────────────────────────┘");
+    println!("┌────────────────────────────────────────────────────────────────────────────┐");
+    println!("│ ⚡ VIGILEND HIGH-FREQUENCY QUANT LIQUIDATION ENGINE v0.1.0                 │");
+    println!("└────────────────────────────────────────────────────────────────────────────┘");
 
     let config = Config::from_env()?;
     info!(
@@ -91,15 +95,14 @@ async fn main() -> Result<()> {
                     );
 
                     if summary.is_liquidatable() {
-                        println!("┌─ [TARGET ACQUIRED: DISTRESSED BORROWER] ──────────────────────────────────────┐");
-                        println!("│ Borrower Address : {:?}", user);
-                        println!("│ Collateral Value : {:<55} │", col_str);
-                        println!("│ Total Debt Value : {:<55} │", debt_str);
-                        println!(
-                            "│ Health Factor    : {:<12} [STATUS: CRITICAL < 1.0000]            │",
-                            hf_str
-                        );
-                        println!("├─ [EXECUTION ROUTING] ─────────────────────────────────────────────────────────┤");
+                        let hf_status = format!("{} [STATUS: CRITICAL < 1.0000]", hf_str);
+
+                        println!("┌─ [TARGET ACQUIRED: DISTRESSED BORROWER] ───────────────────────────────────┐");
+                        print_row("Borrower Address", &format!("{:?}", user));
+                        print_row("Collateral Value", &col_str);
+                        print_row("Total Debt Value", &debt_str);
+                        print_row("Health Factor", &hf_status);
+                        println!("├─ [EXECUTION ROUTING] ──────────────────────────────────────────────────────┤");
 
                         // Convert total_debt_usd (18 decimals) to debt_token amount (6 decimals for USDC)
                         let debt_token_amount =
@@ -120,9 +123,9 @@ async fn main() -> Result<()> {
                             U256::from(config.min_profit_usd),
                         ) {
                             let cover_str = format_usdc(target.debt_to_cover);
-                            println!("│ Pair Strategy    : WETH (Collateral) <==> USDC (Debt)                        │");
-                            println!("│ Debt Repay Amount: {:<55} │", cover_str);
-                            println!("│ Incentive Bonus  : +5.00% Liquidation Premium                             │");
+                            print_row("Pair Strategy", "WETH (Collateral) <==> USDC (Debt)");
+                            print_row("Debt Repay Amount", &cover_str);
+                            print_row("Incentive Bonus", "+5.00% Liquidation Premium");
 
                             match executor
                                 .simulate_liquidation(provider.clone(), &target, config.bot_address)
@@ -130,13 +133,16 @@ async fn main() -> Result<()> {
                             {
                                 Ok(seized) => {
                                     let seized_str = format_weth(seized);
-                                    println!("│ Simulation Result: eth_call SUCCESSFUL ✅                                    │");
-                                    println!("│ Seized Collateral: {:<55} │", seized_str);
-                                    println!("└───────────────────────────────────────────────────────────────────────────────┘");
+                                    print_row("Simulation Result", "eth_call SUCCESSFUL ✅");
+                                    print_row("Seized Collateral", &seized_str);
+                                    println!("└────────────────────────────────────────────────────────────────────────────┘");
                                 }
                                 Err(err) => {
-                                    println!("│ Simulation Result: REVERTED ❌ ({:?})                                  │", err);
-                                    println!("└───────────────────────────────────────────────────────────────────────────────┘");
+                                    print_row(
+                                        "Simulation Result",
+                                        &format!("REVERTED ❌ ({:?})", err),
+                                    );
+                                    println!("└────────────────────────────────────────────────────────────────────────────┘");
                                 }
                             }
                         }

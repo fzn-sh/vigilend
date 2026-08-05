@@ -1,8 +1,9 @@
 use ethers::providers::{Http, Middleware, Provider};
+use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::types::{Address, Bytes, TransactionRequest, U256};
 use eyre::{Result, WrapErr};
 use std::sync::Arc;
-use tracing::info;
+use tracing::debug;
 
 use crate::listener::VigilendPoolContract;
 use crate::types::LiquidationTarget;
@@ -31,7 +32,7 @@ impl LiquidationExecutor {
         call.calldata().unwrap_or_default()
     }
 
-    /// Simulate liquidation transaction via eth_call before submission
+    /// Simulate liquidation transaction using eth_call
     pub async fn simulate_liquidation(
         &self,
         provider: Arc<Provider<Http>>,
@@ -45,13 +46,19 @@ impl LiquidationExecutor {
             .from(sender)
             .data(calldata);
 
-        let result_bytes = provider
-            .call(&tx.into(), None)
+        let typed_tx: TypedTransaction = tx.into();
+
+        let return_bytes = provider
+            .call(&typed_tx, None)
             .await
             .wrap_err("Liquidation simulation (eth_call) failed / reverted")?;
 
-        let seized_collateral = U256::from_big_endian(&result_bytes);
-        info!(
+        if return_bytes.is_empty() {
+            eyre::bail!("Liquidation simulation returned empty bytes");
+        }
+
+        let seized_collateral = U256::from_big_endian(&return_bytes);
+        debug!(
             borrower = ?target.borrower,
             seized_collateral = %seized_collateral,
             "Liquidation simulation succeeded"
@@ -69,14 +76,15 @@ mod tests {
     fn test_encode_liquidate_calldata() {
         let executor = LiquidationExecutor::new(Address::zero());
         let target = LiquidationTarget {
-            borrower: Address::repeat_byte(0x1),
-            collateral_asset: Address::repeat_byte(0x2),
-            debt_asset: Address::repeat_byte(0x3),
-            debt_to_cover: U256::from(1000),
-            estimated_profit_usd: U256::from(50),
+            borrower: Address::zero(),
+            collateral_asset: Address::zero(),
+            debt_asset: Address::zero(),
+            debt_to_cover: U256::from(100),
+            estimated_profit_usd: U256::from(10),
         };
 
         let calldata = executor.encode_liquidate_calldata(&target);
         assert!(!calldata.is_empty());
+        assert_eq!(&calldata[0..4], &[0xaa, 0xb3, 0xf8, 0x68]); // liquidate selector
     }
 }
