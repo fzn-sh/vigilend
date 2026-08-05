@@ -20,6 +20,9 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Result<Self> {
+        // Force override process env memory with fresh disk contents of bot/.env
+        dotenvy::from_filename_override("bot/.env").ok();
+        dotenvy::from_filename_override(".env").ok();
         dotenvy::dotenv().ok();
 
         let rpc_url = env::var("RPC_URL").unwrap_or_else(|_| "http://127.0.0.1:8545".to_string());
