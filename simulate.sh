@@ -17,12 +17,12 @@ create_distressed_borrower() {
     BORROWER_ADDR=$(cast wallet address "$BORROWER_KEY")
 
     # Generate realistic randomized numbers per borrower
-    # WETH collateral: 3 to 45 WETH (Value at $3,000 = $9,000 to $135,000 USD)
-    WETH_INT=$((RANDOM % 43 + 3))
+    # WETH collateral: 10 to 50 WETH (Value at $3,000 = $30,000 to $150,000 USD)
+    WETH_INT=$((RANDOM % 41 + 10))
     WETH_HEX=$(cast --to-uint256 "${WETH_INT}000000000000000000")
 
-    # Realistic LTV borrow: ~60% to 70% of collateral value
-    BORROW_INT=$((WETH_INT * (1600 + RANDOM % 500))) # e.g. 15 WETH -> $24,000 to $31,500 USDC
+    # Borrow LTV: ~65% of initial collateral value ($1,950 per WETH)
+    BORROW_INT=$((WETH_INT * 1950))
     BORROW_USDC_RAW="${BORROW_INT}000000"
 
     echo "1. Resetting WETH Price in MockOracle back to $3,000 initial price..."
@@ -52,14 +52,14 @@ create_distressed_borrower() {
     echo "8. Borrower borrowing $BORROW_INT USDC debt..."
     cast send "$POOL" "borrow(address,uint256,address)" "$USDC" "$BORROW_USDC_RAW" "$BORROWER_ADDR" --rpc-url "$RPC_URL" --private-key "$BORROWER_KEY" > /dev/null
 
-    # Crash price so Health Factor drops below 1.0 (e.g. WETH drops to $100)
-    CRASH_PRICE=$((100 + RANDOM % 100)) # $100 - $200
+    # Realistic Market Drop (WETH drops from $3000 to $1600 - $1800): HF drops to ~0.7-0.9 (Distressed & Profitable!)
+    CRASH_PRICE=$((1600 + RANDOM % 300)) # $1600 - $1900
     CRASH_PRICE_RAW="${CRASH_PRICE}00000000"
-    echo "9. CRASHING WETH Price down to \$$CRASH_PRICE in MockOracle..."
+    echo "9. CRASHING WETH Price down to \$$CRASH_PRICE in MockOracle (HF ~0.70 - 0.85)..."
     cast send "$ORACLE" "setPrice(address,uint256)" "$WETH" "$CRASH_PRICE_RAW" --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
 
     echo "========================================================="
-    echo "MARKET CRASH SIMULATED FOR BORROWER $BORROWER_ADDR!"
+    echo "MARKET DROP SIMULATED FOR BORROWER $BORROWER_ADDR!"
     echo "Collateral: $WETH_INT WETH | Borrowed: \$$BORROW_INT USDC | Crash Price: \$$CRASH_PRICE"
     echo "========================================================="
 }
