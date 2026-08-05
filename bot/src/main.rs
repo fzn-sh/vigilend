@@ -115,15 +115,6 @@ async fn main() -> Result<()> {
                     );
 
                     if summary.is_liquidatable() {
-                        let hf_status = format!("{} [STATUS: CRITICAL < 1.0000]", hf_str);
-
-                        println!("┌─ [TARGET ACQUIRED: DISTRESSED BORROWER] ───────────────────────────────────┐");
-                        print_row("Borrower Address", &format!("{:?}", user));
-                        print_row("Collateral Value", &col_str);
-                        print_row("Total Debt Value", &debt_str);
-                        print_row_colored("Health Factor", &hf_status, C_RED);
-                        println!("├─ [EXECUTION ROUTING] ──────────────────────────────────────────────────────┤");
-
                         // Convert total_debt_usd (18 decimals) to debt_token amount (6 decimals for USDC)
                         let debt_token_amount =
                             summary.total_debt_usd / U256::from(1_000_000_000_000u64); // 18 -> 6 decimals
@@ -142,6 +133,15 @@ async fn main() -> Result<()> {
                             target.estimated_profit_usd,
                             U256::from(config.min_profit_usd),
                         ) {
+                            let hf_status = format!("{} [STATUS: CRITICAL < 1.0000]", hf_str);
+
+                            println!("┌─ [TARGET ACQUIRED: DISTRESSED BORROWER] ───────────────────────────────────┐");
+                            print_row("Borrower Address", &format!("{:?}", user));
+                            print_row("Collateral Value", &col_str);
+                            print_row("Total Debt Value", &debt_str);
+                            print_row_colored("Health Factor", &hf_status, C_RED);
+                            println!("├─ [EXECUTION ROUTING] ──────────────────────────────────────────────────────┤");
+
                             let cover_str = format_usdc(target.debt_to_cover);
                             print_row("Pair Strategy", "WETH (Collateral) <==> USDC (Debt)");
                             print_row("Debt Repay Amount", &cover_str);
