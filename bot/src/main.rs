@@ -35,8 +35,13 @@ fn format_weth(val: U256) -> String {
     format!("{:.4} WETH", f)
 }
 
+fn print_row_colored(label: &str, val: &str, color: &str) {
+    let padded_val = format!("{:<54}", val);
+    println!("│ {:<18}: {}{}{} │", label, color, padded_val, C_RESET);
+}
+
 fn print_row(label: &str, val: &str) {
-    println!("│ {:<18}: {:<54} │", label, val);
+    print_row_colored(label, val, "");
 }
 
 #[tokio::main]
@@ -110,14 +115,13 @@ async fn main() -> Result<()> {
                     );
 
                     if summary.is_liquidatable() {
-                        let hf_status =
-                            format!("{}{} [CRITICAL < 1.0000]{}", C_RED, hf_str, C_RESET);
+                        let hf_status = format!("{} [STATUS: CRITICAL < 1.0000]", hf_str);
 
                         println!("┌─ [TARGET ACQUIRED: DISTRESSED BORROWER] ───────────────────────────────────┐");
                         print_row("Borrower Address", &format!("{:?}", user));
                         print_row("Collateral Value", &col_str);
                         print_row("Total Debt Value", &debt_str);
-                        print_row("Health Factor", &hf_status);
+                        print_row_colored("Health Factor", &hf_status, C_RED);
                         println!("├─ [EXECUTION ROUTING] ──────────────────────────────────────────────────────┤");
 
                         // Convert total_debt_usd (18 decimals) to debt_token amount (6 decimals for USDC)
@@ -149,9 +153,11 @@ async fn main() -> Result<()> {
                             {
                                 Ok(seized) => {
                                     let seized_str = format_weth(seized);
-                                    let sim_res =
-                                        format!("{}eth_call SUCCESSFUL [OK]{}", C_GREEN, C_RESET);
-                                    print_row("Simulation Result", &sim_res);
+                                    print_row_colored(
+                                        "Simulation Result",
+                                        "eth_call SUCCESSFUL [OK]",
+                                        C_GREEN,
+                                    );
                                     print_row("Seized Collateral", &seized_str);
 
                                     if !config.simulation_only {
@@ -171,19 +177,22 @@ async fn main() -> Result<()> {
                                                     "{:?}",
                                                     receipt.block_number.unwrap_or_default()
                                                 );
-                                                let live_res = format!(
-                                                    "{}{} CONFIRMED (Block #{}){}",
-                                                    C_BOLD, C_GREEN, block_str, C_RESET
+                                                let live_res =
+                                                    format!("CONFIRMED (Block #{})", block_str);
+                                                print_row_colored(
+                                                    "On-Chain Execution",
+                                                    &live_res,
+                                                    C_GREEN,
                                                 );
-                                                print_row("On-Chain Execution", &live_res);
                                                 print_row("Transaction Hash", &tx_hash_str);
                                             }
                                             Err(err) => {
-                                                let err_str = format!(
-                                                    "{}FAILED ({:?}){}",
-                                                    C_RED, err, C_RESET
+                                                let err_str = format!("FAILED ({:?})", err);
+                                                print_row_colored(
+                                                    "On-Chain Execution",
+                                                    &err_str,
+                                                    C_RED,
                                                 );
-                                                print_row("On-Chain Execution", &err_str);
                                             }
                                         }
                                     }
@@ -191,9 +200,8 @@ async fn main() -> Result<()> {
                                     println!("└────────────────────────────────────────────────────────────────────────────┘");
                                 }
                                 Err(err) => {
-                                    let err_str =
-                                        format!("{}REVERTED [ERR: {:?}]{}", C_RED, err, C_RESET);
-                                    print_row("Simulation Result", &err_str);
+                                    let err_str = format!("REVERTED [ERR: {:?}]", err);
+                                    print_row_colored("Simulation Result", &err_str, C_RED);
                                     println!("└────────────────────────────────────────────────────────────────────────────┘");
                                 }
                             }
