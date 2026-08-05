@@ -26,7 +26,9 @@ impl Evaluator {
         estimated_profit_usd: U256,
         min_profit_usd: U256,
     ) -> bool {
-        account.is_liquidatable() && estimated_profit_usd >= min_profit_usd
+        account.is_liquidatable()
+            && !account.total_collateral_usd.is_zero()
+            && estimated_profit_usd >= min_profit_usd
     }
 }
 
