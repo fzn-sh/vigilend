@@ -7,7 +7,7 @@ Vigilend is a safety-critical, modular, overcollateralized lending protocol comp
 
 ---
 
-## 🏛️ Protocol Architecture & Key Mechanics
+## Protocol Architecture & Key Mechanics
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -45,7 +45,7 @@ Vigilend is a safety-critical, modular, overcollateralized lending protocol comp
 
 ---
 
-## 🛠️ Verification & Test Suite
+## Verification & Test Suite
 
 The protocol and liquidation engine are verified using Foundry unit/fuzz/stateful invariant tests and Cargo clippy/fmt checks:
 
@@ -61,7 +61,7 @@ The protocol and liquidation engine are verified using Foundry unit/fuzz/statefu
 
 ---
 
-## 🚀 Quickstart & Local Execution
+## Quickstart & Local Execution
 
 ### 1. Prerequisites
 - [Foundry (`forge`, `cast`, `anvil`)](https://getfoundry.sh/)
@@ -96,19 +96,19 @@ Watch Terminal 3! The Rust Liquidation Bot will monitor EVM state 24/7, acquire 
 
 ---
 
-## 🎛️ Configuration (`bot/.env`)
+## Configuration (`bot/.env`)
 
 | Environment Variable | Description | Default |
 |---|---|---|
 | `RPC_URL` | EVM JSON-RPC provider URL | `http://127.0.0.1:8545` |
-| `POOL_ADDRESS` | Address of `VigilendPool` contract | `0x9fd16ea9e31233279975d99d5e8fc91dd214c7da` |
-| `ORACLE_ADDRESS` | Address of `MockOracle` contract | `0xd3ffd73c53f139cebb80b6a524be280955b3f4db` |
-| `FLASH_RECEIVER_ADDRESS` | Address of `FlashLiquidationReceiver` | `0xb932c8342106776e73e39d695f3ffc3a9624ece0` |
+| `POOL_ADDRESS` | Address of `VigilendPool` contract | `0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0` |
+| `ORACLE_ADDRESS` | Address of `MockOracle` contract | `0x5fbdb2315678afecb367f032d93f642f64180aa3` |
+| `FLASH_RECEIVER_ADDRESS` | Address of `FlashLiquidationReceiver` | `0x5fc8d32690cc91d4c39d9d3abcbd16989f875707` |
 | `USE_FLASH_LOAN` | Enable/disable atomic flash loans (`true`/`false`) | `true` |
 | `SIMULATION_ONLY` | Dry-run `eth_call` without broadcasting txs | `false` |
 | `MIN_PROFIT_USD` | Minimum net profit threshold in USD | `10` |
 
 ---
 
-## 📄 License
+## License
 MIT License.
