@@ -120,7 +120,7 @@ A comprehensive line-by-line security review was performed on the core Solidity 
 - **Description:**
   The pool correctly uses OpenZeppelin `SafeERC20` for all transfers, mitigating non-standard ERC-20 return values (e.g. USDT missing boolean return). Fee-on-transfer tokens are not supported by design and should be documented in market configuration guidelines.
 - **Recommendation:**
-  Explicitly document token requirements (no fee-on-transfer, 18 or 6 standard decimals) in `AGENTS.md` and user documentation.
+  Explicitly document token requirements (no fee-on-transfer, 18 or 6 standard decimals) in project specification and user documentation.
 
 ---
 
